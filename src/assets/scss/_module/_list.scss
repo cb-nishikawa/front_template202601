@@ -1,0 +1,38 @@
+@use "../_mixin/" as *;
+@use "./_text" as *;
+
+// m-uList01
+@mixin m-uList01 {
+    @include m-text01;
+    li {
+        position: relative;
+        padding-left: 1.0em;
+        
+        &::before {
+            content: "";
+            position: absolute;
+            left: 0.5ch;
+            top: 0.5lh;
+            transform: translateY(-50%);
+            width: 6px;
+            height: 6px;
+            background-color: var(--uList01-bullet-color01, #F0F);
+            border-radius: 50%;
+            box-sizing: border-box;
+        }
+
+        &:has(ul) {
+            &::before {
+                content: none;
+            }
+            li {
+                &::before {
+                    background-color: var(--uList01-child-bullet-color02, #00F);
+                }
+            }
+        }
+    }
+}
+[data-module~="m-uList01"] {
+    @include m-uList01;
+}

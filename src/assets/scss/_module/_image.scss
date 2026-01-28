@@ -1,0 +1,30 @@
+@use "../_mixin/" as *;
+@use "./_text" as *;
+
+//m-image01
+@mixin m-image01 {
+    overflow: hidden;
+    width: var(--image-width, fit-content);
+    border-radius: var(--image-border-radius, 0);
+    aspect-ratio: var(--image-aspect,  auto);
+    
+    &>.wrapper {
+        display: block;
+        width: var(--image-width, fit-content);
+
+        &>.inner {
+            display: block;
+            width: var(--image-width, fit-content);
+            
+            img {
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+            }
+        }
+    }
+}
+
+[data-module~="m-image01"] {
+    @include m-image01;
+}

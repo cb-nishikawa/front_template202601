@@ -1,0 +1,53 @@
+@mixin defaultVar($value: "") {
+    $prefix: if($value != "", $value + "-", "");
+
+    opacity: var(--#{$prefix}opacity, 1);
+    display: var(--#{$prefix}display, inherit);
+    position: var(--#{$prefix}position, static);
+    top: var(--#{$prefix}top, auto);
+    right: var(--#{$prefix}right, auto);
+    bottom: var(--#{$prefix}bottom, auto);
+    left: var(--#{$prefix}left, auto);
+    z-index: var(--#{$prefix}z-index, auto);
+
+    width: var(--#{$prefix}width, auto);
+    height: var(--#{$prefix}height, auto);
+    margin-top: var(--#{$prefix}margin-top, 0);
+    margin-right: var(--#{$prefix}margin-right, 0);
+    margin-bottom: var(--#{$prefix}margin-bottom, 0);
+    margin-left: var(--#{$prefix}margin-left, 0);
+
+    padding-top: var(--#{$prefix}padding-top, 0);
+    padding-right: var(--#{$prefix}padding-right, 0);
+    padding-bottom: var(--#{$prefix}padding-bottom, 0);
+    padding-left: var(--#{$prefix}padding-left, 0);
+
+    color: var(--#{$prefix}text-color, inherit);
+    background-color: var(--#{$prefix}bg-color, transparent);
+    border-width: var(--#{$prefix}border-width, 0);
+    border-style: var(--#{$prefix}border-style, none);
+    border-color: var(--#{$prefix}border-color, transparent);
+    border-radius: var(--#{$prefix}border-radius, 0);
+    box-shadow: var(--#{$prefix}box-shadow, none);
+
+    font-size: var(--#{$prefix}font-size, inherit);
+    font-weight: var(--#{$prefix}font-weight, inherit);
+    line-height: var(--#{$prefix}line-height, normal);
+    letter-spacing: var(--#{$prefix}letter-spacing, normal);
+    text-align: var(--#{$prefix}text-align, left);
+
+    scale: var(--#{$prefix}scale, 1);
+    rotate: var(--#{$prefix}rotate, 0deg);
+    translate: var(--#{$prefix}translate, 0, 0);
+    transform-origin: var(--#{$prefix}transform-origin, center);
+}
+
+
+@mixin moduleBaseVar {
+    &>.wrapper {
+        @include defaultVar("wrapper");
+        &>.inner {
+           @include defaultVar("inner");
+        }
+    }
+}

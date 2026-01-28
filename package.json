@@ -1,0 +1,26 @@
+{
+  "name": "front_template202601",
+  "version": "1.0.0",
+  "description": "",
+  "main": "vite.config.js",
+  "scripts": {
+    "dev": "vite",
+    "sass:watch": "sass --watch src/assets/scss:src/assets/css",
+    "dev:full": "npm-run-all --parallel dev sass:watch",
+    "build": "rm -rf dist && vite build",
+    "preview": "vite preview"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+  },
+  "devDependencies": {
+    "pug": "^3.0.3",
+    "sass": "^1.93.2",
+    "vite": "^7.1.12",
+    "vite-plugin-imagemin": "^0.6.1",
+    "vite-plugin-pug": "^0.4.1"
+  }
+}

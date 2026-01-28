@@ -1,0 +1,30 @@
+@use "../_mixin/" as *;
+
+// m-text01
+@mixin m-text01 {
+    font-size: var(--text-font-size, 16px);
+    line-height: var(--text-line-height, 1.8);
+    letter-spacing: var(--text-letter-spacing, 0.05em);
+
+    strong {
+        font-weight: bold;
+    }
+    sup {
+        font-size: 0.6em;
+        vertical-align: super;
+    }
+    sub {
+        font-size: 0.6em;
+        vertical-align: sub;
+    }
+    s {
+        text-decoration: line-through;
+    }
+    i {
+        font-style: italic;
+    }
+}
+
+[data-module~="m-text01"] {
+    @include m-text01;
+}

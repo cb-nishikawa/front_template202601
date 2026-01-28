@@ -1,0 +1,30 @@
+@use "../_mixin/" as *;
+
+// m-link01
+@mixin m-link01 {
+    &>.wrapper {
+        text-decoration: underline;
+        color: var(--link-text-color, #00F);
+    }
+}
+
+[data-module~="m-link01"] {
+    @include m-link01;
+}
+
+
+// m-btn01
+@mixin m-btn01 {
+    &>.wrapper {
+        display: block;
+        padding: var(--btn-padding, 10px 20px);
+        border-radius: var(--btn-border-radius, 5px);
+        color: var(--btn-text-color, #FFF);
+        background-color: var(--btn-bg-color, #F00);
+        text-align: center;
+    }
+}
+
+[data-module~="m-btn01"] {
+    @include m-btn01;
+}

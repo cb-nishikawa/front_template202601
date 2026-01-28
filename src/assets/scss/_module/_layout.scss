@@ -1,0 +1,100 @@
+@use "sass:list";
+@use "../_mixin/" as *;
+
+// l-wrapper_contentsWidth01
+@mixin l-wrapper_contentsWidth01 {
+    max-width: calc(var(--contentsWidth01-width, 1000px) + var(--contentsWidth01-padding, 20px) * 2);
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: var(--contentsWidth01-paddingLeft, 20px);
+    padding-right: var(--contentsWidth01-paddingRight, 20px);
+    box-sizing: border-box;
+}
+
+[data-module~="l-wrapper_contentsWidth01"] {
+    @include l-wrapper_contentsWidth01;
+}
+
+
+// l-wrapper_bg01
+@mixin l-wrapper_bg01 {
+    padding: var(--wrapper-padding, 20px);
+    background-color: var(--wrapper-bg, #F5F5F5);
+    box-sizing: border-box
+}
+
+[data-module~="l-wrapper_bg01"] {
+    @include l-wrapper_bg01;
+}
+
+
+
+//l-gridContents01
+
+@mixin l-gridContents01 {
+    &>.wrapper {
+        &>.inner {
+            display: grid;
+
+            &>.block {
+                --image-width: 100%;
+                --image-border-radius: 10px;
+            }
+        }
+    }
+}
+
+
+$textNumbers: ("", "--two", "--three", "--four", "--five", "--six");
+
+@for $i from 1 through list.length($textNumbers) {
+    $text: list.nth($textNumbers, $i);
+    $num: $i + 1;
+
+    [data-module~="l-gridContents01#{$text}"] {
+        @include l-gridContents01;
+        &>.wrapper {
+            &>.inner {
+                @if $text == "--two" {
+                    grid-template-columns: repeat(2, 1fr);
+                } @else if $text == "--three" {
+                    grid-template-columns: repeat(3, 1fr);
+                } @else if $text == "--four" {
+                    grid-template-columns: repeat(4, 1fr);
+                } @else if $text == "--five" {
+                    grid-template-columns: repeat(5, 1fr);
+                } @else if $text == "--six" {
+                    grid-template-columns: repeat(6, 1fr);
+                }
+            }
+        }
+    }
+}
+
+
+
+//l-sideContents01
+
+@mixin l-sideContents01 {
+    &>.wrapper {
+        &>.inner {
+            display: flex;
+
+            &>.block {
+                flex-grow: 1; //伸縮する
+                flex-shrink: 1; //縮小する
+                flex-basis: auto;
+                
+                &:has(.image) {
+                    flex-grow: 0; //伸縮しない
+                    flex-shrink: 0; //縮小しない
+                }
+            }
+        }
+    }
+}
+
+[data-module~="l-sideContents01"] {
+    @include l-sideContents01;
+}
+

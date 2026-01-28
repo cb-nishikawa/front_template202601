@@ -1,0 +1,48 @@
+
+@use "./_base/" as *;
+@use "./_mixin/" as *;
+@use "./_module/" as *;
+
+
+
+// コンポーネント
+// ------------------------------------------------------------
+
+
+//c-common01
+@mixin c-common01 {
+    margin-bottom: 60px;
+    &:last-child {
+        margin-bottom: 0;
+    }
+    &>.wrapper {
+        &>.inner {
+            &>.block {
+                &:last-child {
+                    margin-bottom: 0;
+                }
+            }
+        }
+    }
+}
+[data-module~="c-common01"] {    
+    @include c-common01;
+}
+
+
+// ページ
+// ------------------------------------------------------------
+
+//p-component01
+.p-component01 {
+    --link-text-color: #007BFF;
+    --btn-text-color: #FFFFFF;
+    --btn-bg-color: #007BFF;
+
+    --contentsWidth01-width: 900px;
+    --contentsWidth01-padding: 15px;
+
+    &>.wrapper {
+        @include l-wrapper_contentsWidth01;
+    }
+}
