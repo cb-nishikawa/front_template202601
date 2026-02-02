@@ -2,7 +2,13 @@
     $prefix: if($value != "", $value + "-", "");
 
     opacity: var(--#{$prefix}opacity, 1);
-    display: var(--#{$prefix}display, inherit);
+    display: var(--#{$prefix}display, revert);
+    gap: var(--#{$prefix}gap, 0);
+    flex-direction: var(--#{$prefix}flex-direction, row);
+    justify-content: var(--#{$prefix}justify-content, flex-start);
+    align-items: var(--#{$prefix}align-items, stretch);
+    flex-wrap: var(--#{$prefix}flex-wrap, nowrap);
+
     position: var(--#{$prefix}position, static);
     top: var(--#{$prefix}top, auto);
     right: var(--#{$prefix}right, auto);
@@ -22,6 +28,8 @@
     padding-bottom: var(--#{$prefix}padding-bottom, 0);
     padding-left: var(--#{$prefix}padding-left, 0);
 
+    box-sizing: var(--#{$prefix}box-sizing, border-box);
+
     color: var(--#{$prefix}text-color, inherit);
     background-color: var(--#{$prefix}bg-color, transparent);
     border-width: var(--#{$prefix}border-width, 0);
@@ -35,6 +43,9 @@
     line-height: var(--#{$prefix}line-height, normal);
     letter-spacing: var(--#{$prefix}letter-spacing, normal);
     text-align: var(--#{$prefix}text-align, left);
+    // white-space: var(--#{$prefix}white-space, normal);
+    // overflow-wrap: var(--#{$prefix}overflow-wrap, break-word);
+    // word-break: var(--#{$prefix}word-break, break-word);
 
     scale: var(--#{$prefix}scale, 1);
     rotate: var(--#{$prefix}rotate, 0deg);
@@ -43,7 +54,10 @@
 }
 
 
-@mixin moduleBaseVar {
+@mixin moduleBaseVar($value: "") {
+    $prefix: if($value != "", $value + "-", "");
+    @include defaultVar("#{$prefix}");
+
     &>.wrapper {
         @include defaultVar("wrapper");
         &>.inner {

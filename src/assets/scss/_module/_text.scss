@@ -2,25 +2,32 @@
 
 // m-text01
 @mixin m-text01 {
+    @include moduleBaseVar("text");
+
     font-size: var(--text-font-size, 16px);
     line-height: var(--text-line-height, 1.8);
     letter-spacing: var(--text-letter-spacing, 0.05em);
+    word-break: break-all;
 
     strong {
         font-weight: bold;
     }
     sup {
         font-size: 0.6em;
+        display: inline-block;
         vertical-align: super;
     }
     sub {
         font-size: 0.6em;
+        display: inline-block;
         vertical-align: sub;
     }
     s {
+        display: inline-block;
         text-decoration: line-through;
     }
     i {
+        display: inline-block;
         font-style: italic;
     }
 }

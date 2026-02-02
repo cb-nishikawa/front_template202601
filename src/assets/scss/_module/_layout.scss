@@ -1,13 +1,15 @@
 @use "sass:list";
+@use "sass:map";
 @use "../_mixin/" as *;
+@use "../_config" as *;
 
 // l-wrapper_contentsWidth01
 @mixin l-wrapper_contentsWidth01 {
-    max-width: calc(var(--contentsWidth01-width, 1000px) + var(--contentsWidth01-padding, 20px) * 2);
+    max-width: calc(var(--contentsWidth01-width, var(--root-contents-width01)) + var(--contentsWidth01-padding, var(--root-contents-side-gap01)) * 2);
     margin-left: auto;
     margin-right: auto;
-    padding-left: var(--contentsWidth01-paddingLeft, 20px);
-    padding-right: var(--contentsWidth01-paddingRight, 20px);
+    padding-left: var(--contentsWidth01-paddingLeft, var(--root-contents-side-gap01));
+    padding-right: var(--contentsWidth01-paddingRight, var(--root-contents-side-gap01));
     box-sizing: border-box;
 }
 
@@ -29,43 +31,19 @@
 
 
 
+
+
 //l-gridContents01
 
 @mixin l-gridContents01 {
     &>.wrapper {
         &>.inner {
-            display: grid;
+            // display: grid;
+            display: flex;
+            flex-wrap: wrap;
 
             &>.block {
                 --image-width: 100%;
-                --image-border-radius: 10px;
-            }
-        }
-    }
-}
-
-
-$textNumbers: ("", "--two", "--three", "--four", "--five", "--six");
-
-@for $i from 1 through list.length($textNumbers) {
-    $text: list.nth($textNumbers, $i);
-    $num: $i + 1;
-
-    [data-module~="l-gridContents01#{$text}"] {
-        @include l-gridContents01;
-        &>.wrapper {
-            &>.inner {
-                @if $text == "--two" {
-                    grid-template-columns: repeat(2, 1fr);
-                } @else if $text == "--three" {
-                    grid-template-columns: repeat(3, 1fr);
-                } @else if $text == "--four" {
-                    grid-template-columns: repeat(4, 1fr);
-                } @else if $text == "--five" {
-                    grid-template-columns: repeat(5, 1fr);
-                } @else if $text == "--six" {
-                    grid-template-columns: repeat(6, 1fr);
-                }
             }
         }
     }
@@ -73,28 +51,105 @@ $textNumbers: ("", "--two", "--three", "--four", "--five", "--six");
 
 
 
-//l-sideContents01
+// ブレイクポイントの短縮名定義
+$bp-config: (
+  "xl": $RES_WID_EX_LARGE01,
+  "lg": $RES_WID_LARGE01,
+  "md": $RES_WID_MIDDLE01,
+  "sm": $RES_WID_SMALL01,
+  "xs": $RES_WID_EX_SMALL01
+);
 
-@mixin l-sideContents01 {
-    &>.wrapper {
+// 1. 共通の幅計算ロジック（.blockに対して設定）
+@mixin grid-width($cols) {
+  // 親の .inner を経由して .block を指定
+  & > .wrapper > .inner > .block {
+    @if $cols == 1 {
+      width: 100%;
+    } @else {
+      width: calc((100% - var(--inner-gap, 20px) * (#{$cols} - 1)) / #{$cols});
+    }
+  }
+}
+
+// 2. モジュールの基本構造
+[data-module~="l-gridContents01"] {
+  @include l-gridContents01;
+
+  & > .wrapper > .inner {
+    gap: var(--inner-gap, 20px);
+  }
+
+  // --- data-gridによる列数制御（[data-module]と同じ階層のdata-gridを参照） ---
+  
+  // 基本列数
+  @for $i from 1 through 6 {
+    &[data-grid~="#{$i}"] {
+      @include grid-width($i);
+    }
+  }
+
+  // レスポンシブ列数
+  @each $bp-name, $max-width in $bp-config {
+    @for $i from 1 through 6 {
+      &[data-grid~="#{$bp-name}-#{$i}"] {
+        @media screen and (max-width: #{$max-width}) {
+          @include grid-width($i);
+        }
+      }
+    }
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+//l-sideByContents01
+
+@mixin l-sideByContents01 {
+  
+    &>.wrapper{
+        @include defaultVar("wrapper");
         &>.inner {
+            @include defaultVar("inner");
             display: flex;
+            gap: var(--inner-gap, 20px);
 
-            &>.block {
-                flex-grow: 1; //伸縮する
-                flex-shrink: 1; //縮小する
+            & > .block {
+                @include defaultVar("block");
+                flex-grow: 1;
+                flex-shrink: 1;
                 flex-basis: auto;
                 
                 &:has(.image) {
-                    flex-grow: 0; //伸縮しない
-                    flex-shrink: 0; //縮小しない
+                    flex-grow: 0;
+                    flex-shrink: 0;
                 }
+            }
+        }
+    }
+
+    $directions: (
+        "left": row,
+        "right": row-reverse
+    );
+
+    @each $name, $direction in $directions {
+        &[data-side="#{$name}"] {
+            & > .wrapper > .inner {
+                flex-direction: $direction;
             }
         }
     }
 }
 
-[data-module~="l-sideContents01"] {
-    @include l-sideContents01;
+[data-module*="l-sideByContents01"] {
+  @include l-sideByContents01;
 }
-

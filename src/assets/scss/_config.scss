@@ -1,0 +1,13 @@
+$CONTENTS_WIDTH01: 1000px;
+$RES_WID_EX_SMALL01: 420px;   // スマホ
+$RES_WID_SMALL01: 600px;      // スマホ
+$RES_WID_MIDDLE01: 768px;     // タブレット
+$RES_WID_LARGE01: 1000px;      // 大型タブレット
+$RES_WID_EX_LARGE01: 1200px;  // デスクトップ
+
+$CONTENTS_SIDE_GAP01: 20px;
+
+:root {
+    --root-contents-width01: #{$CONTENTS_WIDTH01};
+    --root-contents-side-gap01: #{$CONTENTS_SIDE_GAP01};
+}

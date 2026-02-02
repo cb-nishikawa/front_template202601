@@ -2,6 +2,8 @@
 
 // m-link01
 @mixin m-link01 {
+    @include moduleBaseVar("link");
+
     &>.wrapper {
         text-decoration: underline;
         color: var(--link-text-color, #00F);
@@ -15,13 +17,19 @@
 
 // m-btn01
 @mixin m-btn01 {
+    @include moduleBaseVar("btn");
+
+    display: var(--btn-display, block);
+
     &>.wrapper {
-        display: block;
-        padding: var(--btn-padding, 10px 20px);
-        border-radius: var(--btn-border-radius, 5px);
-        color: var(--btn-text-color, #FFF);
-        background-color: var(--btn-bg-color, #F00);
-        text-align: center;
+        overflow: var(--wrapper-overflow, hidden);
+        display: var(--wrapper-display, block);
+        width: var(--wrapper-width, 100%);
+        padding: var(--wrapper-padding, 10px 20px);
+        color: var(--wrapper-text-color, #FFF);
+        background-color: var(--wrapper-bg-color, #F00);
+        border-radius: var(--wrapper-border-radius, 5px);
+        text-align: var(--wrapper-text-align, center);
     }
 }
 

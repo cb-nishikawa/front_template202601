@@ -2,6 +2,7 @@
 @use "./_base/" as *;
 @use "./_mixin/" as *;
 @use "./_module/" as *;
+@use "_config/" as *;
 
 
 
@@ -30,6 +31,46 @@
 }
 
 
+.c-side-by-contents01 {
+    --image-width: 100%;
+    --inner-gap: 20px;
+    container-type: inline-size;
+
+    &>.wrapper {
+        @include l-wrapper_contentsWidth01;
+    }
+    &>.wrapper {
+        &>.inner {
+           .block {
+                &:has(.image) {
+                    --block-width: 50%;
+                }
+            }
+        }
+    }
+    &[data-side="left"] {
+        .block {
+            &:has(.image) {
+                --block-margin-left: calc((100svw - #{$CONTENTS_WIDTH01}) * -0.5);
+                @container (max-width: #{$CONTENTS_WIDTH01}) {
+                    --block-margin-left: calc(var(--root-contents-side-gap01, 20px) * -1.0);
+                }
+            }
+        }
+    }
+    &[data-side="right"] {
+        .block {
+            &:has(.image) {
+                --block-margin-right: calc((100svw - #{$CONTENTS_WIDTH01}) * -0.5);
+                @container (max-width: #{$CONTENTS_WIDTH01}) {
+                    --block-margin-right: calc(var(--root-contents-side-gap01, 20px) * -1.0);
+                }
+            }
+        }
+    }
+}
+
+
 // ページ
 // ------------------------------------------------------------
 
@@ -39,10 +80,9 @@
     --btn-text-color: #FFFFFF;
     --btn-bg-color: #007BFF;
 
-    --contentsWidth01-width: 900px;
-    --contentsWidth01-padding: 15px;
-
     &>.wrapper {
         @include l-wrapper_contentsWidth01;
     }
 }
+
+

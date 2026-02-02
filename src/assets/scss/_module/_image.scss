@@ -3,18 +3,18 @@
 
 //m-image01
 @mixin m-image01 {
-    overflow: hidden;
-    width: var(--image-width, fit-content);
-    border-radius: var(--image-border-radius, 0);
-    aspect-ratio: var(--image-aspect,  auto);
+    @include moduleBaseVar("image");
     
+    width: var(--image-width, fit-content);
+    overflow: var(--image-overflow, hidden);
+
     &>.wrapper {
-        display: block;
-        width: var(--image-width, fit-content);
+        display: var(--image-wrapper-display, block);
+        width: var(--image-wrapper-width, 100%);
 
         &>.inner {
-            display: block;
-            width: var(--image-width, fit-content);
+            display: var(--image-inner-display, block);
+            width: var(--image-inner-width, 100%);
             
             img {
                 width: 100%;
