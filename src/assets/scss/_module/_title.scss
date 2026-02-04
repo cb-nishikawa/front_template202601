@@ -1,30 +1,32 @@
 @use "../_mixin/" as *;
 
-//m-title_large01
-@mixin m-title_large01 {
+
+//m-title01
+@mixin m-title01 {
     @include moduleBaseVar("title");
 
-    font-size: var(--title-font-size, 32px);
+    margin-bottom: var(--title-margin-bottom, 16px);
+
     font-weight: var(--title-font-weight, bold);
-    line-height: var(--title-line-height, 1.8);
-    letter-spacing: var(--title-letter-spacing, 0.05em);
+    line-height: var(--title-line-height, var(--root-base-line-height01, 1.8));
+
+    &:first-child {
+        margin-top: var(--title-margin-top, 0);
+    }
+
+    &:last-child {
+        margin-bottom: var(--title-margin-bottom, 0);
+    }
+
+    &>.wrapper {
+        &>.inner {
+            letter-spacing: var(--inner-letter-spacing, var(--root-base-letter-spacing01, 0.05em));
+        }
+    }
 }
 
-[data-module~="m-title_large01"] {
-    @include m-title_large01;
+[data-module~="m-title01"] {
+    @include m-title01;
 }
 
 
-//m-title_bold01
-@mixin m-title_bold01 {
-    @include moduleBaseVar("title");
-
-    font-size: var(--title-font-size, 16px);
-    font-weight: var(--title-font-weight, bold);
-    line-height: var(--title-line-height, 1.8);
-    letter-spacing: var(--title-letter-spacing, 0.05em);
-}
-
-[data-module~="m-title_bold01"] {
-    @include m-title_bold01;
-}

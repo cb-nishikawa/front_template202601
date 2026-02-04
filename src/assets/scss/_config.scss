@@ -6,8 +6,16 @@ $RES_WID_LARGE01: 1000px;      // 大型タブレット
 $RES_WID_EX_LARGE01: 1200px;  // デスクトップ
 
 $CONTENTS_SIDE_GAP01: 20px;
+$BASE_FONT_SIZE01: 16px;
+$BASE_LETTER_SPACING01: 0.05em;
+$BASE_LINE_HEIGHT01: 1.8;
+$BASE_LINK_COLOR01: #00F;
 
 :root {
     --root-contents-width01: #{$CONTENTS_WIDTH01};
     --root-contents-side-gap01: #{$CONTENTS_SIDE_GAP01};
+    --root-base-font-size01: #{$BASE_FONT_SIZE01};
+    --root-base-letter-spacing01: #{$BASE_LETTER_SPACING01};
+    --root-base-line-height01: #{$BASE_LINE_HEIGHT01};
+    --root-base-link-color01: #{$BASE_LINK_COLOR01};
 }

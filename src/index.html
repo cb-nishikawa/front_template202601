@@ -9,116 +9,118 @@
 </head>
 <body>
 
-    <div class="p-component01" data-module="c-common01">
+    <div class="c-component01">
         <div class="wrapper">
             <div class="inner">
                 <div class="block">
-                    <m-title-large01>サンプル Text Content</m-title-large01>
-                    <m-text-unit01>サンプル<sup>sup</sup><sub>sub</sub><s>sssss</s><i>iii</i><strong>strong</strong> Text Content</m-text-unit01>
-                    <m-link-unit01 href="/contact">サンプル Text Content</m-link-unit01>
-                    <m-btn-unit01 href="/more">サンプル Text Content</m-btn-unit01>
-                    <m-u-list01>
-                        <m-list-item01>
-                            <m-text-unit01>サンプル<sup>sup</sup><sub>sub</sub><s>sssss</s><i>iii</i><strong>strong</strong> Text Content</m-text-unit01>
-                        </m-list-item01>
-                    </m-u-list01>
+
+                    <!-- モジュール一覧 -->
+                    <m-module data-module="m-title01" class="c-title_bg01">モジュール一覧</m-module>
+                    <m-module data-module="m-image01" src="https://placehold.jp/320x200.png" alt="サンプル画像"></m-module>
+                    <m-module data-module="m-title01">タイトルモジュール</m-module>
+                    <m-module data-module="m-text01">テキストモジュール<a href="#">リンク</a><sup>sup</sup><sub>sub</sub><s>sssss</s><i>iii</i><strong>strong</strong> Text Content</m-module>
+                    <m-module data-module="m-text01 m-link01" href="/link">テキストリンクモジュール</m-module>
+                    <m-module data-module="m-btn01" href="/link">ボタンモジュール</m-module>
+                    <m-ulist01>
+                        <m-list01>
+                            <m-module data-module="m-text01">テキスト</m-module>
+                        </m-list01>
+                        <m-list01>
+                            <ul>
+                                <m-list01>
+                                    <m-module data-module="m-text01">テキスト</m-module>
+                                </m-list01>
+                                <m-list01>
+                                    <m-module data-module="m-text01">テキスト</m-module>
+                                </m-list01>
+                            </ul>
+                        </m-list01>
+                        <m-list01>
+                            <m-module data-module="m-text01">テキスト</m-module>
+                        </m-list01>
+                    </m-ulist01>
                 </div>
             </div>
         </div>
     </div>
 
 
-    <l-side-by-contents01 class="c-side-by-contents01" data-side="left">
+    <div class="c-component01">
+        <div class="wrapper">
+            <div class="inner">
+                <div class="block">
+                    <m-module data-module="m-title01" class="c-title_bg01">タイトル コンポーネント</m-module>
+                    <m-module data-module="m-title01" class="c-title_large01">ラージタイトル</m-module>
+                    <m-module data-module="m-title01" class="c-title_bold01">ボールドタイトル</m-module>
+                    <m-module data-module="m-title01" class="c-title_bg01">背景タイトル</m-module>
+                    <m-module data-module="m-title01" class="c-title_bg01--fit">背景タイトル</m-module>
+                    <m-module data-module="m-title01" class="c-title_bg01--fit" data-type="center">背景タイトル</m-module>
+                    <m-module data-module="m-title01" class="c-title_bg01--fit" data-type="right">背景タイトル</m-module>
+                    <m-module data-module="m-title01" class="c-title_borderBottom01">下線タイトル</m-module>
+                    <m-module data-module="m-title01" class="c-title_borderBottom01--fit">下線タイトル</m-module>
+                    <m-module data-module="m-title01" class="c-title_borderBottom01--fit" data-type="center">下線タイトル</m-module>
+                    <m-module data-module="m-title01" class="c-title_borderBottom01--fit" data-type="right">下線タイトル</m-module>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <l-layout data-module="l-sideByContents01" class="c-side-by-contents01" data-side="left">
         <div class="block">
-            <m-image-unit01 class="image" src="https://placehold.jp/320x200.png" alt="サンプル画像"></m-image-unit01>
+            <m-module class="image" data-module="m-image01" src="https://placehold.jp/320x200.png" alt="サンプル画像"></m-module>
         </div>
         
         <div class="block">
-            <m-title-large01>サンプル Text Content</m-title-large01>
-            <m-title-bold01>サンプル Text Content</m-title-bold01>
-            <m-text-unit01>サンプル<sup>sup</sup><sub>sub</sub><s>sssss</s><i>iii</i><strong>strong</strong> Text Content</m-text-unit01>
-            <m-btn-unit01 href="#">サンプル Text Content</m-btn-unit01>
-            <m-u-list01>
-                <m-list-item01>
-                    <m-text-unit01>サンプル<sup>sup</sup><sub>sub</sub><s>sssss</s><i>iii</i><strong>strong</strong> Text Content</m-text-unit01>
-                </m-list-item01>
-            </m-u-list01>
-        </div>
-    </l-side-by-contents01>
+            <m-module data-module="m-text01">テキスト</m-module>
+            <m-module data-module="m-btn01" href="/link">ボタンモジュール</m-module>
 
-    <l-side-by-contents01 class="c-side-by-contents01" data-side="right">
+            <m-ulist01>
+                <m-list01>
+                    <m-module data-module="m-text01">テキスト</m-module>
+                </m-list01>
+            </m-ulist01>
+        </div>
+    </l-layout>
+
+    <l-layout data-module="l-sideByContents01" class="c-component01" data-side="right">
         <div class="block">
-            <m-image-unit01 class="image" src="https://placehold.jp/320x200.png" alt="サンプル画像"></m-image-unit01>
+            <m-module class="image" data-module="m-image01" src="https://placehold.jp/320x200.png" alt="サンプル画像"></m-module>
         </div>
         
         <div class="block">
-            <m-title-large01>サンプル Text Content</m-title-large01>
-            <m-title-bold01>サンプル Text Content</m-title-bold01>
-            <m-text-unit01>サンプル<sup>sup</sup><sub>sub</sub><s>sssss</s><i>iii</i><strong>strong</strong> Text Content</m-text-unit01>
-            <m-btn-unit01 href="#">サンプル Text Content</m-btn-unit01>
-            <m-u-list01>
-                <m-list-item01>
-                    <m-text-unit01>サンプル<sup>sup</sup><sub>sub</sub><s>sssss</s><i>iii</i><strong>strong</strong> Text Content</m-text-unit01>
-                </m-list-item01>
-            </m-u-list01>
+            <m-module data-module="m-text01">テキスト</m-module>
+            <m-module data-module="m-btn01" href="#">サンプル Text Content</m-module>
+            <m-ulist01>
+                <m-list01>
+                    <m-module data-module="m-text01">テキスト</m-module>
+                </m-list01>
+            </m-ulist01>
         </div>
-    </l-side-by-contents01>
+    </l-layout>
 
-    <l-side-by-contents01 class="p-component01" data-side="right">
+    <l-layout class="c-component01" data-module="l-gridContents01" data-grid="5 md-4 sm-2 xs-1">
         <div class="block">
-            <m-image-unit01 class="image" src="https://placehold.jp/320x200.png" alt="サンプル画像"></m-image-unit01>
-        </div>
-        
-        <div class="block">
-            <m-title-large01>サンプル Text Content</m-title-large01>
-            <m-title-bold01>サンプル Text Content</m-title-bold01>
-            <m-text-unit01>サンプル<sup>sup</sup><sub>sub</sub><s>sssss</s><i>iii</i><strong>strong</strong> Text Content</m-text-unit01>
-            <m-btn-unit01 href="#">サンプル Text Content</m-btn-unit01>
-            <m-u-list01>
-                <m-list-item01>
-                    <m-text-unit01>サンプル<sup>sup</sup><sub>sub</sub><s>sssss</s><i>iii</i><strong>strong</strong> Text Content</m-text-unit01>
-                </m-list-item01>
-            </m-u-list01>
-        </div>
-    </l-side-by-contents01>
-
-    <l-grid-contents01 class="p-component01" data-grid="5 md-4 sm-2 xs-1">
-        <div class="block">
-            <m-image-unit01 class="image" src="https://placehold.jp/320x200.png" alt="サンプル画像"></m-image-unit01>
-            <m-title-bold01>サンプル Text Content</m-title-bold01>
-            <m-text-unit01>
-                サンプル<sup>sup</sup><sub>sub</sub><s>sssss</s><i>iii</i><strong>strong</strong> Text Content
-            </m-text-unit01>
+            <m-module class="image" data-module="m-image01" src="https://placehold.jp/320x200.png" alt="サンプル画像"></m-module>
+            <m-module data-module="m-text01">テキスト</m-module>
         </div>
         <div class="block">
-            <m-image-unit01 class="image" src="https://placehold.jp/320x200.png" alt="サンプル画像"></m-image-unit01>
-            <m-title-bold01>サンプル Text Content</m-title-bold01>
-            <m-text-unit01>
-                サンプル<sup>sup</sup><sub>sub</sub><s>sssss</s><i>iii</i><strong>strong</strong> Text Content
-            </m-text-unit01>
+            <m-module class="image" data-module="m-image01" src="https://placehold.jp/320x200.png" alt="サンプル画像"></m-module>
+            <m-module data-module="m-text01">テキスト</m-module>
         </div>
         <div class="block">
-            <m-image-unit01 class="image" src="https://placehold.jp/320x200.png" alt="サンプル画像"></m-image-unit01>
-            <m-title-bold01>サンプル Text Content</m-title-bold01>
-            <m-text-unit01>
-                サンプル<sup>sup</sup><sub>sub</sub><s>sssss</s><i>iii</i><strong>strong</strong> Text Content
-            </m-text-unit01>
+            <m-module class="image" data-module="m-image01" src="https://placehold.jp/320x200.png" alt="サンプル画像"></m-module>
+            <m-module data-module="m-text01">テキスト</m-module>
         </div>
         <div class="block">
-            <m-image-unit01 class="image" src="https://placehold.jp/320x200.png" alt="サンプル画像"></m-image-unit01>
-            <m-title-bold01>サンプル Text Content</m-title-bold01>
-            <m-text-unit01>
-                サンプル<sup>sup</sup><sub>sub</sub><s>sssss</s><i>iii</i><strong>strong</strong> Text Content
-            </m-text-unit01>
+            <m-module class="image" data-module="m-image01" src="https://placehold.jp/320x200.png" alt="サンプル画像"></m-module>
+            <m-module data-module="m-text01">テキスト</m-module>
         </div>
         <div class="block">
-            <m-image-unit01 class="image" src="https://placehold.jp/320x200.png" alt="サンプル画像"></m-image-unit01>
-            <m-title-bold01>サンプル Text Content</m-title-bold01>
-            <m-text-unit01>
-                サンプル<sup>sup</sup><sub>sub</sub><s>sssss</s><i>iii</i><strong>strong</strong> Text Content
-            </m-text-unit01>
+            <m-module class="image" data-module="m-image01" src="https://placehold.jp/320x200.png" alt="サンプル画像"></m-module>
+            <m-module data-module="m-text01">テキスト</m-module>
         </div>
-    </l-grid-contents01>
+    </l-layout>
 
 
 
@@ -126,7 +128,7 @@
 
 
     <!-- ------------ -->
-    <div data-module="l-wrapper_contentsWidth01">
+    <div data-mixin="contentsWidth01">
         <p data-module="m-title_bold01">
             <span class="wrapper">
                 <span class="inner">サンプル Text Content</span>

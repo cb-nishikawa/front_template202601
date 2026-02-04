@@ -1,12 +1,23 @@
 @use "../_mixin/" as *;
+@use "../_config" as *;
+
 
 // m-link01
 @mixin m-link01 {
     @include moduleBaseVar("link");
 
+    margin-bottom: var(--link-margin-bottom, 10px);
+
+    &:first-child {
+        margin-top: var(--link-margin-top, 0);
+    }
+
+    &:last-child {
+        margin-bottom: var(--link-margin-bottom, 0);
+    }
+
     &>.wrapper {
-        text-decoration: underline;
-        color: var(--link-text-color, #00F);
+        color: var(--wrapper-link-color, var(--root-base-link-color01, #00F));
     }
 }
 
@@ -18,7 +29,6 @@
 // m-btn01
 @mixin m-btn01 {
     @include moduleBaseVar("btn");
-
     display: var(--btn-display, block);
 
     &>.wrapper {
@@ -27,7 +37,7 @@
         width: var(--wrapper-width, 100%);
         padding: var(--wrapper-padding, 10px 20px);
         color: var(--wrapper-text-color, #FFF);
-        background-color: var(--wrapper-bg-color, #F00);
+        background-color: var(--wrapper-bg-color, var(--root-base-link-color01, #00F));
         border-radius: var(--wrapper-border-radius, 5px);
         text-align: var(--wrapper-text-align, center);
     }

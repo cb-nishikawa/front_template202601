@@ -3,20 +3,6 @@
 @use "../_mixin/" as *;
 @use "../_config" as *;
 
-// l-wrapper_contentsWidth01
-@mixin l-wrapper_contentsWidth01 {
-    max-width: calc(var(--contentsWidth01-width, var(--root-contents-width01)) + var(--contentsWidth01-padding, var(--root-contents-side-gap01)) * 2);
-    margin-left: auto;
-    margin-right: auto;
-    padding-left: var(--contentsWidth01-paddingLeft, var(--root-contents-side-gap01));
-    padding-right: var(--contentsWidth01-paddingRight, var(--root-contents-side-gap01));
-    box-sizing: border-box;
-}
-
-[data-module~="l-wrapper_contentsWidth01"] {
-    @include l-wrapper_contentsWidth01;
-}
-
 
 // l-wrapper_bg01
 @mixin l-wrapper_bg01 {
@@ -67,7 +53,7 @@ $bp-config: (
     @if $cols == 1 {
       width: 100%;
     } @else {
-      width: calc((100% - var(--inner-gap, 20px) * (#{$cols} - 1)) / #{$cols});
+      width: calc((100% - var(--inner-gap, 0px) * (#{$cols} - 1)) / #{$cols});
     }
   }
 }
@@ -77,7 +63,7 @@ $bp-config: (
   @include l-gridContents01;
 
   & > .wrapper > .inner {
-    gap: var(--inner-gap, 20px);
+    gap: var(--inner-gap, 0px);
   }
 
   // --- data-gridによる列数制御（[data-module]と同じ階層のdata-gridを参照） ---
@@ -100,12 +86,6 @@ $bp-config: (
     }
   }
 }
-
-
-
-
-
-
 
 
 

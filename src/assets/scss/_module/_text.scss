@@ -4,30 +4,46 @@
 @mixin m-text01 {
     @include moduleBaseVar("text");
 
-    font-size: var(--text-font-size, 16px);
-    line-height: var(--text-line-height, 1.8);
-    letter-spacing: var(--text-letter-spacing, 0.05em);
-    word-break: break-all;
+    margin-bottom: var(--text-margin-bottom, 10px);
+
+    font-size: var(--text-font-size, var(--root-base-font-size01, 10px));
+    line-height: var(--text-line-height, var(--root-base-line-height01, 1.8));
+
+    &:first-child {
+        margin-top: var(--text-margin-top, 0);
+    }
+
+    &:last-child {
+        margin-bottom: var(--text-margin-bottom, 0);
+    }
+
+    &>.wrapper {
+        &>.inner {
+            letter-spacing: var(--inner-letter-spacing, var(--root-base-letter-spacing01, 0.05em));
+            word-break: var(--inner-word-break, break-word);
+        }
+    }
+
+    a {
+        color: var(--text-link-color, var(--root-base-link-color01, #00F));
+        text-decoration: var(--text-link-text-decoration, underline);
+    }
 
     strong {
         font-weight: bold;
     }
     sup {
         font-size: 0.6em;
-        display: inline-block;
         vertical-align: super;
     }
     sub {
         font-size: 0.6em;
-        display: inline-block;
         vertical-align: sub;
     }
     s {
-        display: inline-block;
         text-decoration: line-through;
     }
     i {
-        display: inline-block;
         font-style: italic;
     }
 }

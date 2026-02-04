@@ -2,80 +2,47 @@
  * 共通モジュールの構造定義
  */
 const moduleTemplates = {
-    // タイトル（大）
-    'm-title-large01': (el) => {
-        const tag = el.getAttribute('tag') || 'h3';
-        const className = el.className ? ` class="${el.className}"` : '';
-        return `
-            <${tag}${className} data-module="m-title_large01">
-                <span class="wrapper"><span class="inner">${el.innerHTML}</span></span>
-            </${tag}>`;
-    },
 
-    // タイトル（太字）
-    'm-title-bold01': (el) => {
-        const tag = el.getAttribute('tag') || 'h3';
-        const className = el.className ? ` class="${el.className}"` : '';
-        return `
-            <${tag}${className} data-module="m-title_bold01">
-                <span class="wrapper"><span class="inner">${el.innerHTML}</span></span>
-            </${tag}>`;
-    },
-
-    // テキスト
-    'm-text-unit01': (el) => {
+    'm-module': (el) => {
         const tag = el.getAttribute('tag') || 'p';
+        const moduleName = el.getAttribute('data-module') || 'module';
         const className = el.className ? ` class="${el.className}"` : '';
-        return `
-            <${tag}${className} data-module="m-text01">
-                <span class="wrapper"><span class="inner">${el.innerHTML}</span></span>
-            </${tag}>`;
-    },
-
-    // リンクテキスト
-    'm-link-unit01': (el) => {
-        const tag = el.getAttribute('tag') || 'p';
-        const href = el.getAttribute('href') || '#';
-        const className = el.className ? ` class="${el.className}"` : '';
-        return `
-            <${tag}${className} data-module="m-text01 m-link01">
-                <a href="${href}" class="wrapper">
-                    <span class="inner">${el.innerHTML}</span>
-                </a>
-            </${tag}>`;
-    },
-
-    // ボタン
-    'm-btn-unit01': (el) => {
-        const tag = el.getAttribute('tag') || 'p';
-        const href = el.getAttribute('href') || '#';
-        const className = el.className ? ` class="${el.className}"` : '';
-        return `
-            <${tag}${className} data-module="m-btn01">
-                <a href="${href}" class="wrapper">
-                    <span class="inner">${el.innerHTML}</span>
-                </a>
-            </${tag}>`;
-    },
-
-    // 画像
-    'm-image-unit01': (el) => {
-        const tag = el.getAttribute('tag') || 'p';
-        const src = el.getAttribute('src') || '';
+        const type = el.getAttribute('data-type') || '';
+        const typeAttr = type ? ` data-type="${type}"` : '';
+        const href = el.getAttribute('href');
+        const src = el.getAttribute('src');
         const alt = el.getAttribute('alt') || '';
-        const className = el.className ? ` class="${el.className}"` : '';
-        return `
-            <${tag}${className} data-module="m-image01">
-                <span class="wrapper">
-                    <span class="inner">
-                        <img src="${src}" alt="${alt}">
+        
+        // 画像の場合
+        if (src) {
+            return `
+                <${tag}${className} data-module="${moduleName}"${typeAttr}>
+                    <span class="wrapper">
+                        <span class="inner">
+                            <img src="${src}" alt="${alt}">
+                        </span>
                     </span>
-                </span>
+                </${tag}>`;
+        }
+        
+        // リンクの場合
+        if (href) {
+            return `
+                <${tag}${className} data-module="${moduleName}"${typeAttr}>
+                    <a href="${href}" class="wrapper">
+                        <span class="inner">${el.innerHTML}</span>
+                    </a>
+                </${tag}>`;
+        }
+        
+        // 通常のテキスト
+        return `
+            <${tag}${className} data-module="${moduleName}"${typeAttr}>
+                <span class="wrapper"><span class="inner">${el.innerHTML}</span></span>
             </${tag}>`;
     },
 
-
-    'm-u-list01': (el) => {
+    'm-ulist01': (el) => {
         const className = el.className ? ` class="${el.className}"` : '';
         const moduleName = el.getAttribute('data-module') || 'm-uList01';
 
@@ -84,13 +51,31 @@ const moduleTemplates = {
                 ${el.innerHTML}
             </ul>`;
     },
-        
-    // リストアイテム
-    'm-list-item01': (el) => {
+
+    // レイアウト
+    'l-layout': (el) => {
+        const moduleName = el.getAttribute('data-module') || 'l-layout';
         const className = el.className ? ` class="${el.className}"` : '';
-        return `<li${className}>${el.innerHTML}</li>`;
+        const side = el.getAttribute('data-side');
+        const grid = el.getAttribute('data-grid');
+        
+        let dataAttrs = '';
+        if (side) {
+            dataAttrs += ` data-side="${side}"`;
+        }
+        if (grid) {
+            dataAttrs += ` data-grid="${grid}"`;
+        }
+
+        return `
+            <div${className} data-module="${moduleName}"${dataAttrs}>
+                <div class="wrapper">
+                    <div class="inner">${el.innerHTML}</div>
+                </div>
+            </div>`;
     },
 
+   
     // レイアウト（サイドレイアウト）
     'l-side-by-contents01': (el) => {
         const moduleName = el.getAttribute('data-module') || 'l-sideByContents01';
@@ -98,7 +83,7 @@ const moduleTemplates = {
         const className = el.className ? ` class="${el.className}"` : '';
 
         return `
-            <div${className} data-module="c-common01 ${moduleName}" data-side="${side}">
+            <div${className} data-module="${moduleName}" data-side="${side}">
                 <div class="wrapper">
                     <div class="inner">${el.innerHTML}</div>
                 </div>
@@ -112,7 +97,7 @@ const moduleTemplates = {
         const className = el.className ? ` class="${el.className}"` : '';
 
         return `
-            <div${className} data-module="c-common01 ${moduleName}" data-grid="${grid}">
+            <div${className} data-module="${moduleName}" data-grid="${grid}">
                 <div class="wrapper">
                     <div class="inner">${el.innerHTML}</div>
                 </div>
