@@ -1,67 +1,102 @@
+@use "sass:list";
+@use "sass:meta";
+
+@mixin var($value: "") {
+    opacity: var(--#{$value}opacity, 1);
+    display: var(--#{$value}display, revert);
+    gap: var(--#{$value}gap, 0);
+    flex-direction: var(--#{$value}flex-direction, row);
+    justify-content: var(--#{$value}justify-content, flex-start);
+    align-items: var(--#{$value}align-items, stretch);
+    flex-wrap: var(--#{$value}flex-wrap, nowrap);
+
+    position: var(--#{$value}position, static);
+    top: var(--#{$value}top, auto);
+    right: var(--#{$value}right, auto);
+    bottom: var(--#{$value}bottom, auto);
+    left: var(--#{$value}left, auto);
+    z-index: var(--#{$value}z-index, auto);
+
+    width: var(--#{$value}width, auto);
+    height: var(--#{$value}height, auto);
+    margin-top: var(--#{$value}margin-top, 0);
+    margin-right: var(--#{$value}margin-right, 0);
+    margin-bottom: var(--#{$value}margin-bottom, 0);
+    margin-left: var(--#{$value}margin-left, 0);
+
+    padding-top: var(--#{$value}padding-top, 0);
+    padding-right: var(--#{$value}padding-right, 0);
+    padding-bottom: var(--#{$value}padding-bottom, 0);
+    padding-left: var(--#{$value}padding-left, 0);
+
+    box-sizing: var(--#{$value}box-sizing, border-box);
+
+    color: var(--#{$value}color, inherit);
+    background-color: var(--#{$value}bg-color, transparent);
+    border-width: var(--#{$value}border-width, 0);
+    border-style: var(--#{$value}border-style, none);
+    border-color: var(--#{$value}border-color, transparent);
+    border-radius: var(--#{$value}border-radius, 0);
+    box-shadow: var(--#{$value}box-shadow, none);
+
+    font-size: var(--#{$value}font-size, inherit);
+    font-weight: var(--#{$value}font-weight, inherit);
+    line-height: var(--#{$value}line-height, normal);
+    letter-spacing: var(--#{$value}letter-spacing, normal);
+    text-align: var(--#{$value}text-align, left);
+    // white-space: var(--#{$value}white-space, normal);
+    // overflow-wrap: var(--#{$value}overflow-wrap, break-word);
+    // word-break: var(--#{$value}word-break, break-word);
+
+    scale: var(--#{$value}scale, 1);
+    rotate: var(--#{$value}rotate, 0deg);
+    translate: var(--#{$value}translate, 0, 0);
+    transform-origin: var(--#{$value}transform-origin, center);
+}
+
 @mixin defaultVar($value: "") {
     $prefix: if($value != "", $value + "-", "");
 
-    opacity: var(--#{$prefix}opacity, 1);
-    display: var(--#{$prefix}display, revert);
-    gap: var(--#{$prefix}gap, 0);
-    flex-direction: var(--#{$prefix}flex-direction, row);
-    justify-content: var(--#{$prefix}justify-content, flex-start);
-    align-items: var(--#{$prefix}align-items, stretch);
-    flex-wrap: var(--#{$prefix}flex-wrap, nowrap);
+    @include var("#{$prefix}");
 
-    position: var(--#{$prefix}position, static);
-    top: var(--#{$prefix}top, auto);
-    right: var(--#{$prefix}right, auto);
-    bottom: var(--#{$prefix}bottom, auto);
-    left: var(--#{$prefix}left, auto);
-    z-index: var(--#{$prefix}z-index, auto);
+    &::before {
+        content: var(--#{$prefix}before-content, none);
+        @include var("#{$prefix}before-");
+    }   
+    &::after {
+        content: var(--#{$prefix}after-content, none);
+        @include var("#{$prefix}after-");
+    }
+}
 
-    width: var(--#{$prefix}width, auto);
-    height: var(--#{$prefix}height, auto);
-    margin-top: var(--#{$prefix}margin-top, 0);
-    margin-right: var(--#{$prefix}margin-right, 0);
-    margin-bottom: var(--#{$prefix}margin-bottom, 0);
-    margin-left: var(--#{$prefix}margin-left, 0);
 
-    padding-top: var(--#{$prefix}padding-top, 0);
-    padding-right: var(--#{$prefix}padding-right, 0);
-    padding-bottom: var(--#{$prefix}padding-bottom, 0);
-    padding-left: var(--#{$prefix}padding-left, 0);
 
-    box-sizing: var(--#{$prefix}box-sizing, border-box);
+@mixin moduleBaseVarSet($parentValue: "", $value: "") {
+    $parentPrefix: if($parentValue != "", $parentValue + "-", "");
+    $prefix: if($value != "", $value + "-", "");
 
-    color: var(--#{$prefix}text-color, inherit);
-    background-color: var(--#{$prefix}bg-color, transparent);
-    border-width: var(--#{$prefix}border-width, 0);
-    border-style: var(--#{$prefix}border-style, none);
-    border-color: var(--#{$prefix}border-color, transparent);
-    border-radius: var(--#{$prefix}border-radius, 0);
-    box-shadow: var(--#{$prefix}box-shadow, none);
+    @include var("#{$parentPrefix}#{$prefix}");
 
-    font-size: var(--#{$prefix}font-size, inherit);
-    font-weight: var(--#{$prefix}font-weight, inherit);
-    line-height: var(--#{$prefix}line-height, normal);
-    letter-spacing: var(--#{$prefix}letter-spacing, normal);
-    text-align: var(--#{$prefix}text-align, left);
-    // white-space: var(--#{$prefix}white-space, normal);
-    // overflow-wrap: var(--#{$prefix}overflow-wrap, break-word);
-    // word-break: var(--#{$prefix}word-break, break-word);
-
-    scale: var(--#{$prefix}scale, 1);
-    rotate: var(--#{$prefix}rotate, 0deg);
-    translate: var(--#{$prefix}translate, 0, 0);
-    transform-origin: var(--#{$prefix}transform-origin, center);
+    &::before {
+        content: var(--#{$parentPrefix}#{$prefix}before-content, none);
+        @include var("#{$parentPrefix}#{$prefix}before-");
+    }   
+    &::after {
+        content: var(--#{$parentPrefix}#{$prefix}after-content, none);
+        @include var("#{$parentPrefix}#{$prefix}after-");
+    }
 }
 
 
 @mixin moduleBaseVar($value: "") {
-    $prefix: if($value != "", $value + "-", "");
+    $prefix: if($value != "", $value, "");
     @include defaultVar("#{$prefix}");
 
     &>.wrapper {
-        @include defaultVar("wrapper");
+        @include moduleBaseVarSet("#{$prefix}", "wrapper");
+        
         &>.inner {
-           @include defaultVar("inner");
+            @include moduleBaseVarSet("#{$prefix}", "inner");
         }
     }
 }
@@ -78,4 +113,19 @@
 
 [data-mixin~="contentsWidth01"] {
     @include contentsWidth01;
+}
+
+@mixin cssVar($class, $css, $default) {
+  $className: null; 
+
+  @if meta.type-of($class) == "list" {
+    $className: "";
+    @for $i from 1 through list.length($class) {
+      $className: $className + if($i == 1, "", "-") + list.nth($class, $i);
+    }
+  } @else {
+    $className: $class;
+  }
+
+  #{$css}: var(--#{$className}-#{$css}, #{$default});
 }

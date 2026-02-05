@@ -60,31 +60,40 @@ $bp-config: (
 
 // 2. モジュールの基本構造
 [data-module~="l-gridContents01"] {
-  @include l-gridContents01;
+    @include l-gridContents01;
 
-  & > .wrapper > .inner {
-    gap: var(--inner-gap, 0px);
-  }
-
-  // --- data-gridによる列数制御（[data-module]と同じ階層のdata-gridを参照） ---
-  
-  // 基本列数
-  @for $i from 1 through 6 {
-    &[data-grid~="#{$i}"] {
-      @include grid-width($i);
+    margin-bottom: var(--layout-margin-bottom, 16px);
+    &:first-child {
+        margin-top: var(--title-margin-top, 0);
     }
-  }
 
-  // レスポンシブ列数
-  @each $bp-name, $max-width in $bp-config {
+    &:last-child {
+        margin-bottom: var(--title-margin-bottom, 0);
+    }
+
+    & > .wrapper > .inner {
+        gap: var(--inner-gap, 0px);
+    }
+
+    // --- data-gridによる列数制御（[data-module]と同じ階層のdata-gridを参照） ---
+    
+    // 基本列数
     @for $i from 1 through 6 {
-      &[data-grid~="#{$bp-name}-#{$i}"] {
-        @media screen and (max-width: #{$max-width}) {
-          @include grid-width($i);
+        &[data-grid~="#{$i}"] {
+            @include grid-width($i);
         }
-      }
     }
-  }
+
+    // レスポンシブ列数
+    @each $bp-name, $max-width in $bp-config {
+        @for $i from 1 through 6 {
+            &[data-grid~="#{$bp-name}-#{$i}"] {
+                @media screen and (max-width: #{$max-width}) {
+                    @include grid-width($i);
+                }
+            }
+        }
+    }
 }
 
 
@@ -122,7 +131,7 @@ $bp-config: (
     );
 
     @each $name, $direction in $directions {
-        &[data-side="#{$name}"] {
+        &[data-position="#{$name}"] {
             & > .wrapper > .inner {
                 flex-direction: $direction;
             }
@@ -131,5 +140,80 @@ $bp-config: (
 }
 
 [data-module*="l-sideByContents01"] {
-  @include l-sideByContents01;
+    @include l-sideByContents01;
+    margin-bottom: var(--layout-margin-bottom, 16px);
+    &:first-child {
+        margin-top: var(--title-margin-top, 0);
+    }
+
+    &:last-child {
+        margin-bottom: var(--title-margin-bottom, 0);
+    }
+}
+
+
+
+
+
+
+
+
+//l-bgContents01
+
+@mixin l-bgContents01 {
+  
+    &>.wrapper {
+        @include defaultVar("wrapper");
+        overflow: var(--wrapper-overflow, hidden);
+        position: var(--wrapper-position, relative);
+        height: var(--wrapper-height, 40svh);
+        
+        &>.inner {
+            @include defaultVar("inner");
+            display: var(--inner-display, flex);
+            height: var(--inner-height, 100%);
+            padding: var(--inner-padding, 20px);
+
+
+            & > .block {
+                @include defaultVar("block");
+              
+                &:has(.image) {
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+
+                    .image {
+                        position: absolute;
+                        top: 0;
+                        left: 0;
+                        width: var(--image-width, 100%);
+                        height: var(--image-height, 100%);
+
+                        --wrapper-height: 100%;
+                        --inner-height: 100%;
+                    }
+                }
+                
+                &:not(:has(.image)) {
+                    width: 400px;
+                }
+            }
+        }
+    }
+
+}
+
+[data-module*="l-bgContents01"] {
+    @include l-bgContents01;
+    margin-bottom: var(--layout-margin-bottom, 16px);
+    &:first-child {
+        margin-top: var(--title-margin-top, 0);
+    }
+
+    &:last-child {
+        margin-bottom: var(--title-margin-bottom, 0);
+    }
 }

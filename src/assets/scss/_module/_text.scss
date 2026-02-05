@@ -2,31 +2,32 @@
 
 // m-text01
 @mixin m-text01 {
-    @include moduleBaseVar("text");
-
-    margin-bottom: var(--text-margin-bottom, 10px);
-
-    font-size: var(--text-font-size, var(--root-base-font-size01, 10px));
-    line-height: var(--text-line-height, var(--root-base-line-height01, 1.8));
+    
+    $type: "text";
+    
+    @include moduleBaseVar($type);
+    @include cssVar($type, margin-bottom, 10px);
+    @include cssVar($type, font-size, var(--root-base-font-size01, 10px));
+    @include cssVar($type, line-height, var(--root-base-line-height01, 1.8));
 
     &:first-child {
-        margin-top: var(--text-margin-top, 0);
+        @include cssVar($type, margin-top, 0);
     }
 
     &:last-child {
-        margin-bottom: var(--text-margin-bottom, 0);
+        @include cssVar($type, margin-bottom, 0);
     }
 
     &>.wrapper {
         &>.inner {
-            letter-spacing: var(--inner-letter-spacing, var(--root-base-letter-spacing01, 0.05em));
-            word-break: var(--inner-word-break, break-word);
+            @include cssVar(($type, "inner"), letter-spacing, var(--root-base-letter-spacing01, 0.05em));
+            @include cssVar(($type, "inner"), white-space, normal);
         }
     }
 
     a {
-        color: var(--text-link-color, var(--root-base-link-color01, #00F));
-        text-decoration: var(--text-link-text-decoration, underline);
+        @include cssVar($type, color, var(--text-link-color, var(--root-base-link-color01, #00F)));
+        @include cssVar($type, text-decoration, var(--text-link-text-decoration, underline));
     }
 
     strong {

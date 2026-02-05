@@ -26,10 +26,55 @@
 }
 
 
+
+@mixin m-linkBox01 {
+    @include moduleBaseVar("link");
+
+    margin-bottom: var(--link-margin-bottom, 10px);
+
+    &>.wrapper {
+        display: var(--wrapper-display, block);
+        padding: var(--wrapper-padding, 20px);
+        background-color: var(--wrapper-bg-color, #eee);
+
+        @media (hover: hover) {
+            &:hover {
+                background-color: var(--wrapper-bg-color-hover, #F00);
+            }
+        }
+    }
+
+    &:first-child {
+        margin-top: var(--link-margin-top, 0);
+    }
+
+    &:last-child {
+        margin-bottom: var(--link-margin-bottom, 0);
+    }
+
+    &>.wrapper {
+        color: var(--wrapper-link-color, var(--root-base-link-color01, #00F));
+    }
+}
+
+[data-module~="m-linkBox01"] {
+    @include m-linkBox01;
+}
+
+
 // m-btn01
 @mixin m-btn01 {
     @include moduleBaseVar("btn");
     display: var(--btn-display, block);
+    margin-bottom: var(--btn-margin-bottom, 10px);
+
+    &:first-child {
+        margin-top: var(--link-margin-top, 0);
+    }
+
+    &:last-child {
+        margin-bottom: var(--link-margin-bottom, 0);
+    }
 
     &>.wrapper {
         overflow: var(--wrapper-overflow, hidden);
@@ -40,6 +85,12 @@
         background-color: var(--wrapper-bg-color, var(--root-base-link-color01, #00F));
         border-radius: var(--wrapper-border-radius, 5px);
         text-align: var(--wrapper-text-align, center);
+
+        @media (hover: hover) {
+            &:hover {
+                background-color: var(--wrapper-bg-color-hover, #F00);
+            }
+        }
     }
 }
 

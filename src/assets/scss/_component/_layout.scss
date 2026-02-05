@@ -9,7 +9,7 @@
     }
 }
 
-.c-side-by-contents01 {
+.c-largeImageside01 {
     --image-width: 100%;
     --inner-gap: 20px;
     container-type: inline-size;
@@ -28,7 +28,7 @@
             }
         }
     }
-    &[data-side="left"] {
+    &[data-position="left"] {
         .block {
             &:has(.image) {
                 --block-margin-left: calc((100svw - #{$CONTENTS_WIDTH01}) * -0.5);
@@ -38,7 +38,7 @@
             }
         }
     }
-    &[data-side="right"] {
+    &[data-position="right"] {
         .block {
             &:has(.image) {
                 --block-margin-right: calc((100svw - #{$CONTENTS_WIDTH01}) * -0.5);

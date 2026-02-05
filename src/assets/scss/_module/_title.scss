@@ -3,24 +3,24 @@
 
 //m-title01
 @mixin m-title01 {
-    @include moduleBaseVar("title");
+    $type: "title";
+    @include moduleBaseVar($type);
 
-    margin-bottom: var(--title-margin-bottom, 16px);
-
-    font-weight: var(--title-font-weight, bold);
-    line-height: var(--title-line-height, var(--root-base-line-height01, 1.8));
+    @include cssVar($type, margin-bottom, 16px);
+    @include cssVar($type, font-weight, bold);
+    @include cssVar($type, line-height, var(--root-base-line-height01, 1.8));
 
     &:first-child {
-        margin-top: var(--title-margin-top, 0);
+        @include cssVar($type, margin-top, 0);
     }
 
     &:last-child {
-        margin-bottom: var(--title-margin-bottom, 0);
+        @include cssVar($type, margin-bottom, 0);
     }
 
     &>.wrapper {
         &>.inner {
-            letter-spacing: var(--inner-letter-spacing, var(--root-base-letter-spacing01, 0.05em));
+            @include cssVar(($type, "inner"), letter-spacing, var(--root-base-letter-spacing01, 0.05em));
         }
     }
 }

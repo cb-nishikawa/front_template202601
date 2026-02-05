@@ -8,39 +8,53 @@ const moduleTemplates = {
         const moduleName = el.getAttribute('data-module') || 'module';
         const className = el.className ? ` class="${el.className}"` : '';
         const type = el.getAttribute('data-type') || '';
-        const typeAttr = type ? ` data-type="${type}"` : '';
         const href = el.getAttribute('href');
         const src = el.getAttribute('src');
         const alt = el.getAttribute('alt') || '';
+        const wrapTag = el.getAttribute('wrapTag') || 'span';
+        const position = el.getAttribute('data-position');
+        const grid = el.getAttribute('data-grid');
+        
+        let dataAttrs = '';
+        if (type) {
+            dataAttrs += ` data-type="${type}"`;
+        }
+        if (position) {
+            dataAttrs += ` data-position="${position}"`;
+        }
+        if (grid) {
+            dataAttrs += ` data-grid="${grid}"`;
+        }
         
         // 画像の場合
         if (src) {
             return `
-                <${tag}${className} data-module="${moduleName}"${typeAttr}>
-                    <span class="wrapper">
-                        <span class="inner">
+                <${tag}${className} data-module="${moduleName}"${dataAttrs}>
+                    <${wrapTag} class="wrapper">
+                        <${wrapTag} class="inner">
                             <img src="${src}" alt="${alt}">
-                        </span>
-                    </span>
+                        </${wrapTag}>
+                    </${wrapTag}>
                 </${tag}>`;
         }
         
         // リンクの場合
         if (href) {
             return `
-                <${tag}${className} data-module="${moduleName}"${typeAttr}>
+                <${tag}${className} data-module="${moduleName}"${dataAttrs}>
                     <a href="${href}" class="wrapper">
-                        <span class="inner">${el.innerHTML}</span>
+                        <${wrapTag} class="inner">${el.innerHTML}</${wrapTag}>
                     </a>
                 </${tag}>`;
         }
         
         // 通常のテキスト
         return `
-            <${tag}${className} data-module="${moduleName}"${typeAttr}>
-                <span class="wrapper"><span class="inner">${el.innerHTML}</span></span>
+            <${tag}${className} data-module="${moduleName}"${dataAttrs}>
+                <${wrapTag} class="wrapper"><${wrapTag} class="inner">${el.innerHTML}</${wrapTag}></${wrapTag}>
             </${tag}>`;
     },
+
 
     'm-ulist01': (el) => {
         const className = el.className ? ` class="${el.className}"` : '';
@@ -52,57 +66,8 @@ const moduleTemplates = {
             </ul>`;
     },
 
-    // レイアウト
-    'l-layout': (el) => {
-        const moduleName = el.getAttribute('data-module') || 'l-layout';
-        const className = el.className ? ` class="${el.className}"` : '';
-        const side = el.getAttribute('data-side');
-        const grid = el.getAttribute('data-grid');
-        
-        let dataAttrs = '';
-        if (side) {
-            dataAttrs += ` data-side="${side}"`;
-        }
-        if (grid) {
-            dataAttrs += ` data-grid="${grid}"`;
-        }
-
-        return `
-            <div${className} data-module="${moduleName}"${dataAttrs}>
-                <div class="wrapper">
-                    <div class="inner">${el.innerHTML}</div>
-                </div>
-            </div>`;
-    },
-
+    
    
-    // レイアウト（サイドレイアウト）
-    'l-side-by-contents01': (el) => {
-        const moduleName = el.getAttribute('data-module') || 'l-sideByContents01';
-        const side = el.getAttribute('data-side') || 'left';
-        const className = el.className ? ` class="${el.className}"` : '';
-
-        return `
-            <div${className} data-module="${moduleName}" data-side="${side}">
-                <div class="wrapper">
-                    <div class="inner">${el.innerHTML}</div>
-                </div>
-            </div>`;
-    },
-
-    // レイアウト（グリッドレイアウト）
-    'l-grid-contents01': (el) => {
-        const moduleName = el.getAttribute('data-module') || 'l-gridContents01';
-        const grid = el.getAttribute('data-grid') || '1';
-        const className = el.className ? ` class="${el.className}"` : '';
-
-        return `
-            <div${className} data-module="${moduleName}" data-grid="${grid}">
-                <div class="wrapper">
-                    <div class="inner">${el.innerHTML}</div>
-                </div>
-            </div>`;
-    }
 };
 
 

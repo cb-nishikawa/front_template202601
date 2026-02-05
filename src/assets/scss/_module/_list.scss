@@ -3,22 +3,43 @@
 
 // m-uList01
 @mixin m-uList01 {
-    @include m-text01;
+
+    $type: "ul";
+    @include cssVar($type, margin-bottom, 10px);
+    &:first-child {
+        @include cssVar($type, margin-top, 0);
+    }
+
+    &:last-child {
+        @include cssVar($type, margin-bottom, 0);
+    }
     li {
-        position: relative;
-        padding-left: 1.0em;
+        $type: "list";
+        @include defaultVar($type);
+
+        @include cssVar($type, position, relative);
+        @include cssVar($type, margin-bottom, 10px);
+        @include cssVar($type, padding-left, 1.5ch);
+        @include cssVar($type, font-size, var(--root-base-font-size01, 10px));
+        @include cssVar($type, line-height, var(--root-base-line-height01, 1.8));
+
+        &:first-child {
+            @include cssVar($type, margin-top, 0);
+        }
+
+        &:last-child {
+            @include cssVar($type, margin-bottom, 0);
+        }
         
         &::before {
             content: "";
-            position: absolute;
-            left: 0.5ch;
-            top: 0.5lh;
-            transform: translateY(-50%);
-            width: 6px;
-            height: 6px;
-            background-color: var(--uList01-bullet-color01, #F0F);
-            border-radius: 50%;
-            box-sizing: border-box;
+            @include cssVar(($type, "before"), position, absolute);
+            @include cssVar(($type, "before"), left, 0.5ch);
+            @include cssVar(($type, "before"), top, 0.5lh);
+            @include cssVar(($type, "before"), width, 6px);
+            @include cssVar(($type, "before"), height, 6px);
+            @include cssVar(($type, "before"), background-color, #F0F);
+            @include cssVar(($type, "before"), border-radius, 100px);
         }
 
         &:has(ul) {
