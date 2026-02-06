@@ -558,67 +558,108 @@ const WebModuleBuilder = () => {
       li.setAttribute(CONFIG.ATTRIBUTES.LI_ID, node.id);
       
       const hasChildren = node.children && node.children.length > 0;
+      // 元のロジック維持: 子がある場合は p を、ない場合は li 自体をターゲットに
       const targetEl = hasChildren ? document.createElement("p") : li;
 
+      // 1. 三本線ハンドル
+      if (!hasChildren) {
+        const dragHandle = document.createElement("span");
+        dragHandle.classList.add("drag-handle");
+        dragHandle.textContent = "≡"; 
+        targetEl.appendChild(dragHandle);
+      }
+
+      // 2. ラベル
       const labelSpan = document.createElement("span");
       labelSpan.textContent = node.label;
       labelSpan.classList.add("label-text");
+      targetEl.appendChild(labelSpan);
 
+      // 3. 設定ボタン（既存ロジックそのまま）
       const settingBtn = document.createElement("button");
       settingBtn.innerHTML = "⚙";
       settingBtn.className = "edit-btn";
       settingBtn.type = "button";
-
       settingBtn.addEventListener("click", (e) => {
         e.stopPropagation();
         const labelText = node.label.replace(/【.*?】/g, '');
-        
-        if (CONFIG.IS_SUB_WINDOW) {
-          // ...別窓処理は変更なし...
-          const requestPayload = { id: node.id, label: labelText, action: 'REQUEST_EDIT_DATA', ts: Date.now() };
-          localStorage.setItem('EDIT_REQUEST_EVENT', JSON.stringify(requestPayload));
-          window.open('edit.html', 'ModuleEditWindow', 'width=400,height=600');
-        } else {
-          // --- メイン窓の場合 ---
-          const targetEl = document.querySelector(`[data-tree-id="${node.id}"]`);
-          if (targetEl) {
-            // 1. スタイル抽出 (既存ロジック)
-            const nameAttr = targetEl.getAttribute('data-module') || targetEl.getAttribute('data-component') || "";
-            const prefix = nameAttr.startsWith('m-') ? "module" : (nameAttr.startsWith('c-') ? "component" : "layout");
-            const varPrefix = `--${prefix}-`;
-            const rawStyle = targetEl.getAttribute('style') || "";
-            const currentStyles = {};
-            const checkProps = ['width', 'height', 'bg-color', 'opacity', 'margin-top', 'margin-bottom', 'wrapper-width', 'wrapper-padding-top', 'wrapper-padding-bottom', 'wrapper-bg-color', 'inner-width', 'inner-padding-top', 'inner-padding-bottom', 'inner-bg-color'];
-            
-            checkProps.forEach(p => {
-              const regex = new RegExp(`${varPrefix}${p}\\s*:\\s*([^;]+)`);
-              const match = rawStyle.replace(/\u00a0/g, ' ').match(regex);
-              if (match && match[1]) currentStyles[p] = match[1].trim();
-            });
+        const targetElDom = document.querySelector(`[data-tree-id="${node.id}"]`);
+        if (targetElDom) {
+          const nameAttr = targetElDom.getAttribute('data-module') || targetElDom.getAttribute('data-component') || "";
+          const prefix = nameAttr.startsWith('m-') ? "module" : (nameAttr.startsWith('c-') ? "component" : "layout");
+          const varPrefix = `--${prefix}-`;
+          const rawStyle = targetElDom.getAttribute('style') || "";
+          const currentStyles = {};
+          const checkProps = ['width', 'height', 'bg-color', 'opacity', 'margin-top', 'margin-bottom', 'wrapper-width', 'wrapper-padding-top', 'wrapper-padding-bottom', 'wrapper-bg-color', 'inner-width', 'inner-padding-top', 'inner-padding-bottom', 'inner-bg-color'];
+          checkProps.forEach(p => {
+            const regex = new RegExp(`${varPrefix}${p}\\s*:\\s*([^;]+)`);
+            const match = rawStyle.replace(/\u00a0/g, ' ').match(regex);
+            if (match && match[1]) currentStyles[p] = match[1].trim();
+          });
+          localStorage.setItem(CONFIG.STORAGE_KEYS.CURRENT_EDIT, JSON.stringify({ id: node.id, label: labelText, initialStyles: currentStyles, ts: Date.now() }));
+          const styleBlock = document.querySelector('.block.style');
+          if (styleBlock) styleBlock.classList.remove('is-hidden');
+          initEditWindow(); 
+        }
+      });
+      targetEl.appendChild(settingBtn);
 
-            // 2. データの保存
-            localStorage.setItem(CONFIG.STORAGE_KEYS.CURRENT_EDIT, JSON.stringify({ id: node.id, label: labelText, initialStyles: currentStyles, ts: Date.now() }));
-
-            // 3. 表示の制御
-            const styleBlock = document.querySelector('.block.style');
-            if (styleBlock) {
-              styleBlock.classList.remove('is-hidden'); // 表示する
-            }
-            initEditWindow(); 
+      // 4. 削除ボタン（既存ロジックそのまま）
+      const deleteBtn = document.createElement("button");
+      deleteBtn.innerHTML = "×";
+      deleteBtn.className = "delete-btn";
+      deleteBtn.type = "button";
+      deleteBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const targetElDom = document.querySelector(`[${CONFIG.ATTRIBUTES.TREE_ID}="${node.id}"]`);
+        if (confirm(`${node.label} を削除してもよろしいですか？`)) {
+          if (targetElDom) targetElDom.remove();
+          saveHistory();
+          const containerInner = document.querySelector(CONFIG.SELECTORS.CONTAINER_INNER);
+          if (containerInner) {
+            const newTree = buildModuleTree(containerInner);
+            localStorage.setItem(CONFIG.STORAGE_KEYS.TREE_DATA, JSON.stringify({ tree: newTree, updatedAt: Date.now() }));
+            const treeDisplayInner = document.querySelector(CONFIG.SELECTORS.TREE_DISPLAY_INNER);
+            if (treeDisplayInner) { treeDisplayInner.innerHTML = ""; renderTree(newTree, treeDisplayInner); }
           }
         }
       });
+      targetEl.appendChild(deleteBtn);
 
+      // --- ここからが修正のキモ：子要素がある場合の組み立て ---
       if (hasChildren) {
         targetEl.classList.add("parent");
-        targetEl.appendChild(labelSpan);
-        targetEl.appendChild(settingBtn);
-        li.appendChild(targetEl);
+        li.appendChild(targetEl); // 1番目：ラベル行(p)を追加
+
+        // 2番目：【先頭に追加】ボタンを追加
+        const addRow = document.createElement("div");
+        addRow.className = "tree-add-row";
+        addRow.innerHTML = `<button class="tree-inner-add-btn" type="button">＋ 先頭に追加</button>`;
+        addRow.querySelector('button').onclick = (e) => {
+          e.stopPropagation();
+          // メイン窓の targetEl の inner にモジュールを追加するロジック
+          const mainTarget = document.querySelector(`[${CONFIG.ATTRIBUTES.TREE_ID}="${node.id}"]`);
+          const inner = mainTarget?.querySelector('.inner') || mainTarget;
+          if (inner) {
+            const newM = document.createElement('m-module');
+            newM.setAttribute('data-module', 'm-btn01'); // 例としてボタン
+            newM.innerHTML = '<div class="wrapper"><div class="inner">新規</div></div>';
+            inner.insertBefore(newM, inner.firstChild);
+            saveHistory();
+            // ツリー更新
+            const containerInner = document.querySelector(CONFIG.SELECTORS.CONTAINER_INNER);
+            const newTree = buildModuleTree(containerInner);
+            localStorage.setItem(CONFIG.STORAGE_KEYS.TREE_DATA, JSON.stringify(newTree));
+            const treeDisplayInner = document.querySelector(CONFIG.SELECTORS.TREE_DISPLAY_INNER);
+            if (treeDisplayInner) { treeDisplayInner.innerHTML = ""; renderTree(newTree, treeDisplayInner); }
+          }
+        };
+        li.appendChild(addRow);
+
+        // 3番目：子要素の再帰描画（これで ul がボタンの下に来る）
         renderTree(node.children, li);
       } else {
         li.classList.add("content");
-        li.appendChild(labelSpan);
-        li.appendChild(settingBtn);
       }
 
       targetEl.addEventListener("mouseenter", () => handleHover(node.id, 'enter'));
@@ -633,7 +674,9 @@ const WebModuleBuilder = () => {
       animation: 150,
       ghostClass: 'sortable-ghost',
       group: 'nested',
-      filter: '.edit-btn',
+      handle: '.drag-handle',
+      // ポイント：'parent'（pタグ）や 'tree-add-row'（ボタン）はドラッグ対象から外す
+      filter: '.edit-btn, .parent, .tree-add-row', 
       preventOnFilter: false,
       onEnd: () => {
         saveNewOrder();

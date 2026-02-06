@@ -47,6 +47,11 @@
             background: #fff;
             border: 1px solid #ddd;
             border-radius: 4px;
+            line-height: 1.4;
+
+            &:hover {
+                background: #f9f9f9;
+            }
             
             // テキストラベルとボタンを横並びにする
             p, &.content { // hasChildrenがある場合(p)とない場合(li単体)
@@ -55,9 +60,12 @@
                 justify-content: flex-start;
                 padding: 6px 10px;
                 margin: 0;
-                cursor: grab; // 行全体を掴めるようにする
-                min-height: 32px;
                 user-select: none; // ドラッグ中のテキスト選択を防止
+            }
+
+            .drag-handle {
+                cursor: grab;
+                height: 100%;
             }
         }
 
@@ -70,23 +78,43 @@
         }
 
         /* 設定ボタン（⚙）のスタイル調整 */
-        .edit-btn {
-            margin-left: auto; // ボタンを右端に寄せる
-            padding: 4px 8px;
-            cursor: pointer; // ボタンの上ではポインターにする
-            border: 1px solid transparent;
-            background: transparent;
-            color: #999;
+        .edit-btn, .delete-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 18px;
+            height: 18px;
+            margin-left: 4px; /* ボタン間の余白 */
             border-radius: 4px;
-            transition: all 0.2s ease;
             font-size: 14px;
-            line-height: 1;
+            cursor: pointer;
+            vertical-align: middle;
+            border: 1px solid #ccc;
+            background: #fff;
+            transition: background 0.2s, color 0.2s;
+        }
 
-            &:hover {
-                color: #333;
-                background: #f0f0f0;
-                border-color: #ccc;
-            }
+        /* 削除ボタン専用の配色 */
+        .delete-btn {
+            color: #e74c3c;
+            border-color: #fab1a0;
+        }
+
+        .delete-btn:hover {
+            background: #e74c3c;
+            color: #fff;
+            border-color: #e74c3c;
+        }
+
+        /* 親要素の中での整列 */
+        .li-content, .parent {
+            display: flex;
+            align-items: center;
+        }
+
+        .label-text {
+            flex: 1; /* ラベルを広げてボタンを右側に寄せる */
+            margin-right: 10px;
         }
     }
 
@@ -119,13 +147,18 @@
     user-select: none;
 
     --btn-font-size: 13px;
-    --list-font-size: 11px;
+    --list-font-size: 10px;
     * {
         user-select: none;
     }
-    
+
     ul {
-        @include m-uList01;
+        li {
+            font-size: var(--list-font-size, 10px);
+            ul {
+                padding-left: 1ch;
+            }
+        }
     }
 
     .btns {
@@ -162,12 +195,11 @@
             display: flex;
             flex-direction: column;
             height: 100svh;
+
         }
     }
     &--window {
-        ul {
-            @include m-uList01;
-        }
+        
         @include sortable;
     }
 
@@ -175,6 +207,7 @@
 
 .g-treeDisplay {
     height: 100%;
+    padding-left: 10px;
     &>.wrapper {
         height: 100%;
         overflow: auto;
