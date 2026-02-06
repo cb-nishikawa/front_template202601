@@ -44,10 +44,7 @@
     line-height: var(--#{$value}line-height, normal);
     letter-spacing: var(--#{$value}letter-spacing, normal);
     text-align: var(--#{$value}text-align, left);
-    // white-space: var(--#{$value}white-space, normal);
-    // overflow-wrap: var(--#{$value}overflow-wrap, break-word);
-    // word-break: var(--#{$value}word-break, break-word);
-
+   
     scale: var(--#{$value}scale, 1);
     rotate: var(--#{$value}rotate, 0deg);
     translate: var(--#{$value}translate, 0, 0);

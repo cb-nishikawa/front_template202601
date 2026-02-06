@@ -7,26 +7,24 @@ const moduleTemplates = {
         const tag = el.getAttribute('tag') || 'p';
         const moduleName = el.getAttribute('data-module') || 'module';
         const className = el.className ? ` class="${el.className}"` : '';
-        const type = el.getAttribute('data-type') || '';
+        const dataType = el.getAttribute('data-type') || '';
         const href = el.getAttribute('href');
         const src = el.getAttribute('src');
         const alt = el.getAttribute('alt') || '';
         const wrapTag = el.getAttribute('wrapTag') || 'span';
         const position = el.getAttribute('data-position');
         const grid = el.getAttribute('data-grid');
+        const onclick = el.getAttribute('onclick');
         
+        // type属性で 'button' が指定されているか、または onclick があり href がない場合を判定
+        const isButtonMode = el.getAttribute('type') === 'button' || (onclick && !href);
+
         let dataAttrs = '';
-        if (type) {
-            dataAttrs += ` data-type="${type}"`;
-        }
-        if (position) {
-            dataAttrs += ` data-position="${position}"`;
-        }
-        if (grid) {
-            dataAttrs += ` data-grid="${grid}"`;
-        }
+        if (dataType) dataAttrs += ` data-type="${dataType}"`;
+        if (position) dataAttrs += ` data-position="${position}"`;
+        if (grid) dataAttrs += ` data-grid="${grid}"`;
         
-        // 画像の場合
+        // 1. 画像の場合
         if (src) {
             return `
                 <${tag}${className} data-module="${moduleName}"${dataAttrs}>
@@ -38,20 +36,34 @@ const moduleTemplates = {
                 </${tag}>`;
         }
         
-        // リンクの場合
-        if (href) {
+        // 2. リンク(a) または ボタン(button) の切り替え
+        if (href || onclick || isButtonMode) {
+            const interactiveTag = isButtonMode ? 'button' : 'a';
+            
+            // 属性の組み立て
+            let attr = '';
+            if (isButtonMode) {
+                attr = ` type="button"`; // buttonタグならtype="button"を強制
+                if (onclick) attr += ` onclick="${onclick}"`;
+            } else {
+                attr = ` href="${href || '#'}"`;
+                if (onclick) attr += ` onclick="${onclick}"`;
+            }
+            
             return `
                 <${tag}${className} data-module="${moduleName}"${dataAttrs}>
-                    <a href="${href}" class="wrapper">
+                    <${interactiveTag}${attr} class="wrapper">
                         <${wrapTag} class="inner">${el.innerHTML}</${wrapTag}>
-                    </a>
+                    </${interactiveTag}>
                 </${tag}>`;
         }
         
-        // 通常のテキスト
+        // 3. 通常のテキスト（ラップのみ）
         return `
             <${tag}${className} data-module="${moduleName}"${dataAttrs}>
-                <${wrapTag} class="wrapper"><${wrapTag} class="inner">${el.innerHTML}</${wrapTag}></${wrapTag}>
+                <${wrapTag} class="wrapper">
+                    <${wrapTag} class="inner">${el.innerHTML}</${wrapTag}>
+                </${wrapTag}>
             </${tag}>`;
     },
 

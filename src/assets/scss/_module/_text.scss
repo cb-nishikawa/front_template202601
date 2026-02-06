@@ -3,7 +3,7 @@
 // m-text01
 @mixin m-text01 {
     
-    $type: "text";
+    $type: "module";
     
     @include moduleBaseVar($type);
     @include cssVar($type, margin-bottom, 10px);

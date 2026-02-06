@@ -5,7 +5,7 @@
 
 //m-image01
 @mixin m-image01 {
-    @include moduleBaseVar("image");
+    @include moduleBaseVar("module");
     
     width: var(--image-width, fit-content);
     overflow: var(--image-overflow, hidden);

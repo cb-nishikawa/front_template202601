@@ -22,13 +22,17 @@
 //l-gridContents01
 
 @mixin l-gridContents01 {
+    $type: "layout";
+    @include defaultVar($type);
+    
     &>.wrapper {
         &>.inner {
-            // display: grid;
-            display: flex;
-            flex-wrap: wrap;
+            @include cssVar(($type, "inner"), display, flex);
+            @include cssVar(($type, "inner"), flex-wrap, wrap);
 
             &>.block {
+                @include defaultVar(($type, "block"));
+
                 --image-width: 100%;
             }
         }
@@ -51,9 +55,10 @@ $bp-config: (
   // 親の .inner を経由して .block を指定
   & > .wrapper > .inner > .block {
     @if $cols == 1 {
-      width: 100%;
+        --block-width: 100%;
     } @else {
-      width: calc((100% - var(--inner-gap, 0px) * (#{$cols} - 1)) / #{$cols});
+        --block-width: calc((100% - var(--inner-gap, 0px) * (#{$cols} - 1)) / #{$cols});
+        width: calc((100% - var(--inner-gap, 0px) * (#{$cols} - 1)) / #{$cols});
     }
   }
 }

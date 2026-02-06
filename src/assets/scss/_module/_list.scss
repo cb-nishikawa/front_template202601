@@ -6,6 +6,7 @@
 
     $type: "ul";
     @include cssVar($type, margin-bottom, 10px);
+
     &:first-child {
         @include cssVar($type, margin-top, 0);
     }
@@ -13,6 +14,7 @@
     &:last-child {
         @include cssVar($type, margin-bottom, 0);
     }
+
     li {
         $type: "list";
         @include defaultVar($type);
@@ -43,12 +45,16 @@
         }
 
         &:has(ul) {
-            &::before {
-                content: none;
-            }
             li {
                 &::before {
-                    background-color: var(--uList01-child-bullet-color02, #00F);
+                    @include cssVar(($type, "before"), background-color, #00F);
+                }
+                &:has(ul) {
+                    li {
+                        &::before {
+                            @include cssVar(($type, "before"), background-color, #0F0);
+                        }
+                    }
                 }
             }
         }

@@ -4,20 +4,22 @@
 
 // m-link01
 @mixin m-link01 {
-    @include moduleBaseVar("link");
 
-    margin-bottom: var(--link-margin-bottom, 10px);
+    $type: "module";
+    @include moduleBaseVar($type);
+
+    @include cssVar($type, margin-bottom, 10px);
 
     &:first-child {
-        margin-top: var(--link-margin-top, 0);
+        @include cssVar($type, margin-top, 0);
     }
 
     &:last-child {
-        margin-bottom: var(--link-margin-bottom, 0);
+        @include cssVar($type, margin-bottom, 0);
     }
 
     &>.wrapper {
-        color: var(--wrapper-link-color, var(--root-base-link-color01, #00F));
+        @include cssVar(($type, "wrapper"), color, var(--root-base-link-color01, #00F));
     }
 }
 
@@ -28,33 +30,31 @@
 
 
 @mixin m-linkBox01 {
-    @include moduleBaseVar("link");
+    $type: "linkBox";
+    @include moduleBaseVar($type);
 
-    margin-bottom: var(--link-margin-bottom, 10px);
+    @include cssVar($type, margin-bottom, 10px);
+
+    &:first-child {
+        @include cssVar($type, margin-top, 0);
+    }
+
+    &:last-child {
+        @include cssVar($type, margin-bottom, 0);
+    }
 
     &>.wrapper {
-        display: var(--wrapper-display, block);
-        padding: var(--wrapper-padding, 20px);
-        background-color: var(--wrapper-bg-color, #eee);
+        @include cssVar(($type, "wrapper"), display, block);
+        @include cssVar(($type, "wrapper"), padding, 20px);
+        @include cssVar(($type, "wrapper"), background-color, #eee);
 
         @media (hover: hover) {
             &:hover {
-                background-color: var(--wrapper-bg-color-hover, #F00);
+                @include cssVar(($type, "wrapper"), background-color, #F00);
             }
         }
     }
 
-    &:first-child {
-        margin-top: var(--link-margin-top, 0);
-    }
-
-    &:last-child {
-        margin-bottom: var(--link-margin-bottom, 0);
-    }
-
-    &>.wrapper {
-        color: var(--wrapper-link-color, var(--root-base-link-color01, #00F));
-    }
 }
 
 [data-module~="m-linkBox01"] {
@@ -64,31 +64,31 @@
 
 // m-btn01
 @mixin m-btn01 {
-    @include moduleBaseVar("btn");
-    display: var(--btn-display, block);
-    margin-bottom: var(--btn-margin-bottom, 10px);
+    $type: "btn";
+    @include moduleBaseVar($type);
+
+    @include cssVar($type, margin-bottom, 10px);
 
     &:first-child {
-        margin-top: var(--link-margin-top, 0);
+        @include cssVar($type, margin-top, 0);
     }
 
     &:last-child {
-        margin-bottom: var(--link-margin-bottom, 0);
+        @include cssVar($type, margin-bottom, 0);
     }
 
     &>.wrapper {
-        overflow: var(--wrapper-overflow, hidden);
-        display: var(--wrapper-display, block);
-        width: var(--wrapper-width, 100%);
-        padding: var(--wrapper-padding, 10px 20px);
-        color: var(--wrapper-text-color, #FFF);
-        background-color: var(--wrapper-bg-color, var(--root-base-link-color01, #00F));
-        border-radius: var(--wrapper-border-radius, 5px);
-        text-align: var(--wrapper-text-align, center);
+        @include cssVar(($type, "wrapper"), display, block);
+        @include cssVar(($type, "wrapper"), width, 100%);
+        @include cssVar(($type, "wrapper"), padding, 10px 20px);
+        @include cssVar(($type, "wrapper"), color, #FFF);
+        @include cssVar(($type, "wrapper"), background-color, var(--root-base-link-color01, #00F));
+        @include cssVar(($type, "wrapper"), border-radius, 5px);
+        @include cssVar(($type, "wrapper"), text-align, center);
 
         @media (hover: hover) {
             &:hover {
-                background-color: var(--wrapper-bg-color-hover, #F00);
+                @include cssVar(($type, "wrapper"), background-color, #F00);
             }
         }
     }

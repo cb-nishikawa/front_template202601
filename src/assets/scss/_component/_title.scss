@@ -3,7 +3,7 @@
 // c-title_large01
 // ----------------------------------------------------------------
 @mixin c-title_large01 {
-    font-size: var(--title-font-size, 32px);
+    font-size: var(--module-font-size, 32px);
 }
 .c-title_large01 {
     @include c-title_large01;
@@ -14,7 +14,7 @@
 // c-title_bold01
 // ----------------------------------------------------------------
 @mixin c-title_bold01 {
-    font-size: var(--title-font-size, 18px);
+    font-size: var(--module-font-size, 18px);
 }
 .c-title_bold01 {
     @include c-title_bold01;
@@ -26,27 +26,27 @@
 // ----------------------------------------------------------------
 @mixin c-title_bg01 {
     --padding: 15px;
-    padding-top: var(--title-padding-top, var(--padding));
-    padding-bottom: var(--title-padding-bottom, var(--padding));
-    padding-left: var(--title-padding-left, var(--padding));
-    padding-right: var(--title-padding-right, var(--padding));
-    background-color: var(--title-background-color, #f0f0f0);
-    font-size: var(--title-font-size, 18px);
+    padding-top: var(--module-padding-top, var(--padding));
+    padding-bottom: var(--module-padding-bottom, var(--padding));
+    padding-left: var(--module-padding-left, var(--padding));
+    padding-right: var(--module-padding-right, var(--padding));
+    background-color: var(--module-background-color, #f0f0f0);
+    font-size: var(--module-font-size, 18px);
 }
 .c-title_bg01 {
     @include c-title_bg01;
 
     &--fit {
-        display: var(--title-display, table);
+        display: var(--module-display, table);
         @include c-title_bg01;
 
         &[data-type="center"] {
-            margin-left: var(--title-margin-left, auto);
-            margin-right: var(--title-margin-right, auto);
+            margin-left: var(--module-margin-left, auto);
+            margin-right: var(--module-margin-right, auto);
         }
         &[data-type="right"] {
-            margin-left: var(--title-margin-left, auto);
-            margin-right: var(--title-margin-right, 0);
+            margin-left: var(--module-margin-left, auto);
+            margin-right: var(--module-margin-right, 0);
         }
     }
 }
@@ -59,8 +59,8 @@
 // c-title_borderBottom01
 // ----------------------------------------------------------------
 @mixin c-title_borderBottom01 {
-    padding-bottom: var(--title-padding-bottom, 5px);
-    font-size: var(--title-font-size, 20px);
+    padding-bottom: var(--module-padding-bottom, 5px);
+    font-size: var(--module-font-size, 20px);
     position: relative;
     &::after {
         content: "";
@@ -68,24 +68,24 @@
         left: 0;
         bottom: 0;
         width: 100%;
-        height: var(--title-border-height, 2px);
-        background-color: var(--title-border-color, #000);
+        height: var(--module-border-height, 2px);
+        background-color: var(--module-border-color, #000);
     }
 }
 .c-title_borderBottom01 {
     @include c-title_borderBottom01;
 
     &--fit {
-        display: var(--title-display, table);
+        display: var(--module-display, table);
         @include c-title_borderBottom01;
 
         &[data-type="center"] {
-            margin-left: var(--title-margin-left, auto);
-            margin-right: var(--title-margin-right, auto);
+            margin-left: var(--module-margin-left, auto);
+            margin-right: var(--module-margin-right, auto);
         }
         &[data-type="right"] {
-            margin-left: var(--title-margin-left, auto);
-            margin-right: var(--title-margin-right, 0);
+            margin-left: var(--module-margin-left, auto);
+            margin-right: var(--module-margin-right, 0);
         }
     }
 }

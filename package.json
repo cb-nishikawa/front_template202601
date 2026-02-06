@@ -15,6 +15,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "sortablejs": "^1.15.6"
   },
   "devDependencies": {
     "pug": "^3.0.3",
