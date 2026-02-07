@@ -15,12 +15,14 @@
 
             &>.block.tree {
                 width: 250px;
+                min-height: 100svh;
                 &:has(.g-treeSet.is-minimum) {
                     width: auto;
                 }
             }
             &>.block.style {
                 width: 250px;
+                min-height: 100svh;
                 order: 2;
                 &.is-hidden {
                     display: none;
@@ -58,7 +60,6 @@
                 display: flex;
                 align-items: center;
                 justify-content: flex-start;
-                padding: 6px 10px;
                 margin: 0;
                 user-select: none; // ドラッグ中のテキスト選択を防止
             }
@@ -71,6 +72,7 @@
 
         /* 親階層（ComponentやBlock）のスタイル */
         .parent {
+            padding: 6px 10px;
             font-weight: bold;
             color: #333;
             background: #fdfdfd;
@@ -142,7 +144,7 @@
     position: fixed;
     width: 250px;
     height: 100svh;
-    background-color: #FFF;
+    background-color: #FAFAFA;
     z-index: 1000;
     user-select: none;
 
@@ -211,6 +213,9 @@
     &>.wrapper {
         height: 100%;
         overflow: auto;
+        &>.inner {
+            height: 100%;
+        }
     }
 }
 
