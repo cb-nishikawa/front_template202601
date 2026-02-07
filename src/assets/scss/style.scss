@@ -138,6 +138,27 @@
         cursor: grabbing !important;
         opacity: 1 !important;
     }
+
+    .sortable-list.disallow-drop {
+        pointer-events: none; /* マウス反応を無効化 */
+    }
+
+    .sortable-list.disallow-drop li {
+    pointer-events: auto; /* 中の要素（モジュール自体）はドラッグできるように戻す */
+    }
+
+    /* ドロップを許可する場所（Root, Block, List）だけ隙間を作る */
+    .sortable-list.allow-drop {
+    min-height: 15px;
+    padding: 5px 0 5px 20px;
+    border-left: 1px dotted #ccc;
+    pointer-events: auto;
+    }
+
+    /* ドラッグ中のゴースト表示を抑制 */
+    .sortable-list.disallow-drop .sortable-ghost {
+    display: none !important;
+    }
 }
 
 .g-treeSet {

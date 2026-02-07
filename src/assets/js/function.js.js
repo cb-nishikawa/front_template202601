@@ -138,10 +138,15 @@ const WebModuleBuilder = () => {
       li.setAttribute('data-id', node.id);
       
       const isParentType = node.label.includes(CONFIG.LABELS.BLOCK) || node.label.includes(CONFIG.LABELS.LIST);
+      
+      // ★ 修正：親タイプ（block/list）なら 'no-drag' クラスを付与
       const row = document.createElement(isParentType ? "p" : "div");
-      row.className = "parent";
+      row.className = "parent" + (isParentType ? " no-drag" : "");
 
-      row.innerHTML = `<span class="drag-handle">≡</span><span class="label-text">${node.label}</span>`;
+      // ★ 修正：親タイプ以外（モジュール）の時だけ drag-handle を表示
+      const dragHandle = !isParentType ? `<span class="drag-handle">≡</span>` : '';
+      row.innerHTML = `${dragHandle}<span class="label-text">${node.label}</span>`;
+      
       appendActionButtons(row, node);
       li.appendChild(row);
       
@@ -159,8 +164,10 @@ const WebModuleBuilder = () => {
     new Sortable(ul, {
       animation: 150,
       group: 'nested',
+      // ★ 重要：drag-handle クラスを持つ要素のみを掴めるようにする
       handle: '.drag-handle',
-      filter: '.edit-btn, .delete-btn, .tree-add-row, input, textarea, select',
+      // ★ 追加：no-drag クラスを持つ要素は Sortable の対象から完全に無視させる
+      filter: '.no-drag, .edit-btn, .delete-btn, .tree-add-row, input, textarea, select',
       preventOnFilter: false,
       onEnd: () => {
         const rootUl = document.querySelector(`${CONFIG.SELECTORS.TREE_DISPLAY_INNER} > ul`);
