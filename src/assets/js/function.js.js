@@ -129,33 +129,43 @@ const WebModuleBuilder = () => {
   };
 
   const renderTree = (tree, parent) => {
-    if (!tree || tree.length === 0) return;
+    // ★ 修正：treeが空でも、親がブロック/リストなら ul を作成する
+    const isParentLi = parent.tagName === 'LI';
+    const parentLabel = isParentLi ? parent.querySelector('.label-text')?.textContent || "" : "";
+    const isStructure = parentLabel.includes(CONFIG.LABELS.BLOCK) || parentLabel.includes(CONFIG.LABELS.LIST);
+
+    // ルート（親がdisplay）か、構造要素（block/list）の場合は ul を作る
+    if (tree.length === 0 && !isStructure && parent.id !== "tree-display-inner") return;
+
     const ul = document.createElement("ul");
     ul.className = 'sortable-list';
+    
+    // ★ 追加：空の ul に最低限のドロップ領域を確保するためのスタイル（JSで直接制御）
+    ul.style.minHeight = "20px";
+    ul.style.paddingBottom = "10px";
 
     tree.forEach(node => {
       const li = document.createElement("li");
       li.setAttribute('data-id', node.id);
       
       const isParentType = node.label.includes(CONFIG.LABELS.BLOCK) || node.label.includes(CONFIG.LABELS.LIST);
-      
-      // ★ 修正：親タイプ（block/list）なら 'no-drag' クラスを付与
       const row = document.createElement(isParentType ? "p" : "div");
       row.className = "parent" + (isParentType ? " no-drag" : "");
 
-      // ★ 修正：親タイプ以外（モジュール）の時だけ drag-handle を表示
       const dragHandle = !isParentType ? `<span class="drag-handle">≡</span>` : '';
       row.innerHTML = `${dragHandle}<span class="label-text">${node.label}</span>`;
       
       appendActionButtons(row, node);
       li.appendChild(row);
       
-      if (node.children) renderTree(node.children, li);
+      // 子要素があれば再帰、なければ空の状態を renderTree に渡して ul だけ作らせる
+      renderTree(node.children || [], li);
 
       row.onmouseenter = () => handleHover(node.id, true);
       row.onmouseleave = () => handleHover(node.id, false);
       ul.appendChild(li);
     });
+    
     parent.appendChild(ul);
     initSortable(ul);
   };
@@ -163,10 +173,20 @@ const WebModuleBuilder = () => {
   const initSortable = (ul) => {
     new Sortable(ul, {
       animation: 150,
-      group: 'nested',
-      // ★ 重要：drag-handle クラスを持つ要素のみを掴めるようにする
+      group: {
+        name: 'nested',
+        // ★ 修正：ドロップを受け入れるかどうかの判定
+        put: (to) => {
+          // ドロップ先の親要素（li）を取得
+          const parentLi = to.el.closest('li');
+          if (!parentLi) return true; // ルートへのドロップは許可
+
+          const labelText = parentLi.querySelector('.label-text')?.textContent || "";
+          // ★ 親が【block】か【list】を含んでいる場合のみドロップを許可
+          return labelText.includes(CONFIG.LABELS.BLOCK) || labelText.includes(CONFIG.LABELS.LIST);
+        }
+      },
       handle: '.drag-handle',
-      // ★ 追加：no-drag クラスを持つ要素は Sortable の対象から完全に無視させる
       filter: '.no-drag, .edit-btn, .delete-btn, .tree-add-row, input, textarea, select',
       preventOnFilter: false,
       onEnd: () => {
