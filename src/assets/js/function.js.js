@@ -103,7 +103,10 @@ const WebModuleBuilder = () => {
     if (containerInner) {
       const tree = buildModuleTree(containerInner);
       state.historyStack = [JSON.parse(JSON.stringify(tree))];
-      refreshTreeDisplay(tree);
+      
+      // ctx を生成して渡す、もしくは上記1の修正をしていればそのままでもOK
+      const ctx = { CONFIG, LABELS: CONFIG.LABELS, ELEMENT_DEFS };
+      refreshTreeDisplay(tree, ctx);
     }
     setupEventListeners();
   };
@@ -190,34 +193,46 @@ const WebModuleBuilder = () => {
   // ------------------------------------------
   // 4. ツリー表示 & Sortable (修正版)
   // ------------------------------------------
-  const refreshTreeDisplay = (treeData) => {
+  const refreshTreeDisplay = (treeData, ctx) => {
     const display = document.querySelector(CONFIG.SELECTORS.TREE_DISPLAY_INNER);
     if (!display) return;
     display.innerHTML = "";
 
-    // ★ 修正：最上部に独立した追加ボタンを配置
-    // 引数に null を渡し、内部でルート用として判定させます
-    display.appendChild(createAddRow(null));
+    // ★ 修正：ctx が渡されていない場合に、内部で生成する
+    const currentCtx = ctx || {
+      CONFIG: CONFIG,
+      LABELS: CONFIG.LABELS,
+      ELEMENT_DEFS: ELEMENT_DEFS
+    };
+
+    // 第3引数に currentCtx を渡す
+    display.appendChild(createAddRow(null, true, currentCtx));
 
     const tree = treeData || buildModuleTree(document.querySelector(CONFIG.SELECTORS.CONTAINER_INNER));
-    renderTree(tree, display);
+    renderTree(tree, display, currentCtx);
   };
 
-  const renderTree = (tree, parent) => {
+  /**
+   * ツリー構造を再帰的に描画する
+   * @param {Array} tree - 描画対象のデータ
+   * @param {HTMLElement} parent - 追加先の親要素
+   * @param {Object} ctx - { CONFIG, LABELS, ELEMENT_DEFS, handlers } などのコンテキスト
+   */
+  const renderTree = (tree, parent, ctx) => {
     const ul = document.createElement("ul");
     ul.className = 'sortable-list';
     
-    // --- 修正箇所：親のラベルを確認してスタイルを分岐 ---
-    const parentLabel = parent.querySelector(':scope > .parent .label-text')?.textContent || "";
-    const isParentStructure = parentLabel.includes(CONFIG.LABELS.STRUCTURE) || parent.id === "tree-display-inner";
+    // 親のラベルを確認してスタイルの分岐判定
+    // ctx.LABELS を参照するように変更
+    const labelSelector = ':scope > .parent .label-text';
+    const parentLabel = parent.querySelector(labelSelector)?.textContent || "";
+    const isParentStructure = parentLabel.includes(ctx.LABELS.STRUCTURE) || parent.id === "tree-display-inner";
 
     if (isParentStructure) {
-      // ドロップ可能なエリア（枠など）だけ、入れやすくするために隙間を作る
       ul.style.minHeight = "20px";
       ul.style.paddingBottom = "10px";
-      ul.style.background = "rgba(0,0,0,0.02)"; // 任意：入れ場所を分かりやすく
+      ul.style.background = "rgba(0,0,0,0.02)";
     } else {
-      // 普通のモジュールの下には隙間を作らない
       ul.style.minHeight = "0px";
       ul.style.paddingBottom = "0px";
     }
@@ -226,44 +241,54 @@ const WebModuleBuilder = () => {
       const li = document.createElement("li");
       li.setAttribute('data-id', node.id);
       
-      const isStructure = node.label.includes(CONFIG.LABELS.STRUCTURE);
+      const isStructure = node.label.includes(ctx.LABELS.STRUCTURE);
       const row = document.createElement(isStructure ? "p" : "div");
       row.className = "parent" + (isStructure ? " no-drag" : "");
       
       const dragHandle = !isStructure ? `<span class="drag-handle">≡</span>` : '';
       row.innerHTML = `${dragHandle}<span class="label-text">${node.label}</span>`;
       
-      appendActionButtons(row, node);
+      // ボタン生成関数にも ctx を渡す（将来的なリファクタリング用）
+      appendActionButtons(row, node, ctx);
       li.appendChild(row);
       
-      renderTree(node.children || [], li);
+      // 再帰呼び出し：ctx をバケツリレー
+      renderTree(node.children || [], li, ctx);
 
-      // 枠追加ボタンのロジック（ここは既存のまま）
-      if (node.label.includes('【l】') || node.label.includes('m-uList01')) {
+      // 枠追加ボタンのロジック
+      // ラベル判定に ctx.LABELS を使用（必要に応じて拡張可能）
+      const isLayout = node.label.includes('【l】') || node.label.includes('m-uList01');
+      if (isLayout) {
         const addBtnWrap = document.createElement("div");
         addBtnWrap.style.cssText = "padding: 2px 25px; margin-bottom: 8px;";
         const addBtn = document.createElement("button");
         addBtn.innerHTML = "+ 枠(s)を追加";
         addBtn.style.cssText = "font-size: 10px; color: #007bff; background: #fff; border: 1px solid #007bff; border-radius: 3px; cursor: pointer; padding: 2px 10px;";
+        
         addBtn.onclick = (e) => {
           e.stopPropagation();
-          const targetDom = document.querySelector(`[${CONFIG.ATTRIBUTES.TREE_ID}="${node.id}"]`);
+          const targetDom = document.querySelector(`[${ctx.CONFIG.ATTRIBUTES.TREE_ID}="${node.id}"]`);
           if (targetDom) {
             const dz = findContentContainer(targetDom);
-            if (dz) updateChildrenCount(targetDom, dz.children.length + 1);
+            if (dz) {
+              // 第3引数に ctx を追加
+              updateChildrenCount(targetDom, dz.children.length + 1, ctx);
+            }
           }
         };
         addBtnWrap.appendChild(addBtn);
         li.appendChild(addBtnWrap);
       }
 
+      // hover処理
       row.onmouseenter = () => handleHover(node.id, true);
       row.onmouseleave = () => handleHover(node.id, false);
       ul.appendChild(li);
     });
     
     parent.appendChild(ul);
-    initSortable(ul);
+    // Sortable初期化にも ctx を渡す
+    initSortable(ul, ctx);
   };
 
   const initSortable = (ul) => {
@@ -319,9 +344,8 @@ const WebModuleBuilder = () => {
   // ------------------------------------------
   // 5. 新規追加UI (ルート・子要素 両対応版)
   // ------------------------------------------
-  const createAddRow = (node, isRoot = false) => {
+  const createAddRow = (node, isRoot = false, ctx) => {
     const addRow = document.createElement(isRoot ? "div" : "span");
-    
     if (isRoot) {
       addRow.className = "tree-add-row-root";
       addRow.style.cssText = "padding: 5px 10px; background: #f8f9fa; border-bottom: 1px solid #eee; display: block;";
@@ -332,13 +356,13 @@ const WebModuleBuilder = () => {
       ? "width:100%; font-size:11px; padding:4px; border-radius:3px; border:1px solid #ccc; cursor:pointer;"
       : "width: 24px; height: 20px; font-size: 12px; font-weight: bold; border: 1px solid #ccc; border-radius: 3px; background: #fff; cursor: pointer; text-align: center; padding: 0;";
     
-    // --- 修正ポイント：ELEMENT_DEFS から選択肢を動的に作る ---
     const initialOption = document.createElement("option");
     initialOption.value = "";
     initialOption.textContent = "＋";
     select.appendChild(initialOption);
 
-    Object.entries(ELEMENT_DEFS).forEach(([key, def]) => {
+    // ctx.ELEMENT_DEFS から選択肢を生成
+    Object.entries(ctx.ELEMENT_DEFS).forEach(([key, def]) => {
       const o = document.createElement("option");
       o.value = key;
       o.textContent = def.label;
@@ -347,22 +371,21 @@ const WebModuleBuilder = () => {
 
     select.onchange = (e) => {
       const val = e.target.value;
-      if (!val || !ELEMENT_DEFS[val]) return;
+      if (!val || !ctx.ELEMENT_DEFS[val]) return;
       
       let container;
       if (node) {
-        const targetDom = document.querySelector(`[${CONFIG.ATTRIBUTES.TREE_ID}="${node.id}"]`);
+        const targetDom = document.querySelector(`[${ctx.CONFIG.ATTRIBUTES.TREE_ID}="${node.id}"]`);
         if (!targetDom) return;
         container = findContentContainer(targetDom);
       } else {
-        container = document.querySelector(CONFIG.SELECTORS.CONTAINER_INNER);
+        container = document.querySelector(ctx.CONFIG.SELECTORS.CONTAINER_INNER);
       }
       
       if (!container) return;
 
-      // ★ 修正：定義から初期値を読み取るだけ（個別設定は不要）
-      const initialContent = ELEMENT_DEFS[val].default || "";
-      const newEl = createFromTemplate(val, initialContent);
+      // ctx を渡してテンプレートから生成
+      const newEl = createFromTemplate(val, ctx);
 
       if (node) {
         container.insertBefore(newEl, container.firstChild);
@@ -381,30 +404,27 @@ const WebModuleBuilder = () => {
   // ------------------------------------------
   // テンプレート生成ユーティリティ
   // ------------------------------------------
-  const createFromTemplate = (defId) => {
-    const def = ELEMENT_DEFS[defId];
+  const createFromTemplate = (defId, ctx) => {
+    const def = ctx.ELEMENT_DEFS[defId];
     if (!def) return null;
 
-    // $tag の置換だけを行う
     let html = def.template.replace(/\$tag/g, def.tag);
-
     const temp = document.createElement('div');
     temp.innerHTML = html.trim();
     const newEl = temp.firstElementChild;
     
-    // IDの付与
-    newEl.setAttribute(CONFIG.ATTRIBUTES.TREE_ID, "id-" + Math.random().toString(36).slice(2, 11));
+    // ID付与 (ctx.CONFIG参照)
+    newEl.setAttribute(ctx.CONFIG.ATTRIBUTES.TREE_ID, "id-" + Math.random().toString(36).slice(2, 11));
     
-    // レイアウトなどの初期属性付与
     if (def.attrs) {
       def.attrs.forEach(attr => newEl.setAttribute(attr, ""));
     }
 
-    // 子要素（default）がある場合の自動生成
-    if (def.default && ELEMENT_DEFS[def.default]) {
+    // 子要素（default）がある場合の再帰生成
+    if (def.default && ctx.ELEMENT_DEFS[def.default]) {
       const dropZone = newEl.hasAttribute('data-drop-zone') ? newEl : newEl.querySelector('[data-drop-zone]');
       if (dropZone) {
-        const childEl = createFromTemplate(def.default);
+        const childEl = createFromTemplate(def.default, ctx);
         if (childEl) dropZone.appendChild(childEl);
       }
     }
@@ -552,20 +572,7 @@ const WebModuleBuilder = () => {
   // 7. ユーティリティ (数値・単位入力ロジック)
   // ------------------------------------------
 
- // 専用の「枠追加」ボタン用関数
-  const addStructureFrame = (node) => {
-    const targetDom = document.querySelector(`[${CONFIG.ATTRIBUTES.TREE_ID}="${node.id}"]`);
-    if (!targetDom) return;
-    
-    const dz = findContentContainer(targetDom);
-    if (!dz) return;
-
-    // 現在の数 + 1 を指定して実行
-    updateChildrenCount(targetDom, dz.children.length + 1);
-  };
-
-
-  const updateChildrenCount = (targetDom, count) => {
+  const updateChildrenCount = (targetDom, count, ctx) => {
     const dz = findContentContainer(targetDom);
     if (!dz) return;
 
@@ -573,19 +580,18 @@ const WebModuleBuilder = () => {
     const diff = count - currentCount;
 
     if (diff > 0) {
-      const parentModId = targetDom.getAttribute(CONFIG.ATTRIBUTES.MODULE);
-      const defaultChildId = ELEMENT_DEFS[parentModId]?.default;
+      const parentModId = targetDom.getAttribute(ctx.CONFIG.ATTRIBUTES.MODULE);
+      const defaultChildId = ctx.ELEMENT_DEFS[parentModId]?.default;
 
       for (let i = 0; i < diff; i++) {
         const isList = dz.tagName === 'UL';
         const newChild = document.createElement(isList ? 'li' : 'div');
         newChild.setAttribute('data-drop-zone', '');
-        newChild.setAttribute(CONFIG.ATTRIBUTES.TREE_ID, "id-" + Math.random().toString(36).slice(2, 11));
+        newChild.setAttribute(ctx.CONFIG.ATTRIBUTES.TREE_ID, "id-" + Math.random().toString(36).slice(2, 11));
         if (!isList) newChild.className = 'block contents';
 
-        // 初期モジュールの挿入
         if (defaultChildId) {
-          const childEl = createFromTemplate(defaultChildId);
+          const childEl = createFromTemplate(defaultChildId, ctx);
           if (childEl) newChild.appendChild(childEl);
         }
         dz.appendChild(newChild);
@@ -672,51 +678,71 @@ const WebModuleBuilder = () => {
   };
 
   
-  const appendActionButtons = (container, node) => {
+  /**
+   * 各ツリー行にアクションボタン（追加・編集・削除）を付与する
+   * @param {HTMLElement} container - ボタンを追加する親要素(row)
+   * @param {Object} node - ツリーノードデータ
+   * @param {Object} ctx - { CONFIG, LABELS, ELEMENT_DEFS }
+   */
+  const appendActionButtons = (container, node, ctx) => {
     const wrap = document.createElement("div");
     wrap.style.display = "inline-flex"; 
     wrap.style.gap = "4px";
     wrap.style.alignItems = "center";
 
-    // --- 修正：ラベルに STRUCTURE (【s】) が含まれる場合に追加ボタンを表示 ---
-    const isStructure = node.label.includes(CONFIG.LABELS.STRUCTURE);
-    if (isStructure) {
-      // 設定ボタンの「左」に追加したいので、先に append します
-      wrap.appendChild(createAddRow(node, false));
+    const isStructure = node.label.includes(ctx.LABELS.STRUCTURE);
+    const isParentType = node.label.includes('【l】') || node.label.includes('m-uList01');
+
+    // 1. モジュール追加ボタン（セレクトボックス）
+    // STRUCTURE（枠）または親タイプ（レイアウト・リスト）の場合に表示
+    if (isStructure || isParentType) {
+      // createAddRowも将来的にctxを渡す形にリファクタリング可能
+      wrap.appendChild(createAddRow(node, false, ctx));
     }
 
-    // 1. 【＋】ボタン (親要素タイプの場合のみ)
-    const isParentType = node.label.includes(CONFIG.LABELS.BLOCK) || node.label.includes(CONFIG.LABELS.LIST);
-    if (isParentType) {
-      wrap.appendChild(createAddRow(node, false));
-    }
-
-    // 2. 【⚙】ボタン (edit-btn)
+    // 2. 【⚙】設定ボタン
     const editBtn = document.createElement("button");
     editBtn.innerHTML = "⚙"; 
     editBtn.className = "edit-btn";
     editBtn.onclick = (e) => {
       e.stopPropagation();
-      const targetDom = document.querySelector(`[${CONFIG.ATTRIBUTES.TREE_ID}="${node.id}"]`);
+      const targetDom = document.querySelector(`[${ctx.CONFIG.ATTRIBUTES.TREE_ID}="${node.id}"]`);
       if (!targetDom) return;
+
       const styleStr = targetDom.getAttribute('style') || "";
       const currentStyles = {};
+      
+      // スタイル定義からカスタム変数を抽出
+      // ここではSTYLE_DEFSを直接参照していますが、これもctxに入れるとより安全です
       ['width', 'height', 'bg-color', 'opacity', 'margin-top', 'margin-bottom'].forEach(p => {
-        const match = styleStr.match(new RegExp(`--[a-z]+-${p}\\s*:\\s*([^;]+)`));
+        const regex = new RegExp(`--[a-z]+-${p}\\s*:\\s*([^;]+)`);
+        const match = styleStr.match(regex);
         if (match) currentStyles[p] = match[1].trim();
       });
-      document.querySelector(CONFIG.SELECTORS.STYLE_BLOCK)?.classList.remove('is-hidden');
-      initEditWindow({ id: node.id, label: node.label.replace(/【.*?】/g, ''), initialStyles: currentStyles });
+
+      // スタイルパネルを表示
+      const styleBlock = document.querySelector(ctx.CONFIG.SELECTORS.STYLE_BLOCK);
+      styleBlock?.classList.remove('is-hidden');
+
+      // 編集ウィンドウの初期化
+      initEditWindow({ 
+        id: node.id, 
+        label: node.label.replace(/【.*?】/g, ''), 
+        initialStyles: currentStyles 
+      });
     };
 
-    // 3. 【×】ボタン (delete-btn)
+    // 3. 【×】削除ボタン
     const delBtn = document.createElement("button");
     delBtn.innerHTML = "×"; 
     delBtn.className = "delete-btn";
     delBtn.onclick = (e) => { 
       e.stopPropagation(); 
-      const t = document.querySelector(`[${CONFIG.ATTRIBUTES.TREE_ID}="${node.id}"]`); 
-      if (t && confirm(`削除？`)) { t.remove(); refreshTreeAndHistory(); } 
+      const targetDom = document.querySelector(`[${ctx.CONFIG.ATTRIBUTES.TREE_ID}="${node.id}"]`); 
+      if (targetDom && confirm(`この要素を削除しますか？`)) { 
+        targetDom.remove(); 
+        refreshTreeAndHistory(); 
+      } 
     };
 
     wrap.appendChild(editBtn); 
@@ -747,7 +773,14 @@ const WebModuleBuilder = () => {
     setTimeout(() => state.isUndoing = false, 100);
   };
 
-  const refreshTreeAndHistory = () => { saveHistory(); refreshTreeDisplay(); };
+  // refreshTreeDisplay を呼び出す側
+  const refreshTreeAndHistory = () => {
+    saveHistory();
+    // Contextとして、設定と状態、ハンドラを一括で渡す
+    const context = { CONFIG, LABELS: CONFIG.LABELS, ELEMENT_DEFS };
+    refreshTreeDisplay(null, context); 
+  };
+
   window.closeStyleWindow = () => document.querySelector(CONFIG.SELECTORS.STYLE_BLOCK)?.classList.add('is-hidden');
 
   init();
