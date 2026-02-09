@@ -35,11 +35,29 @@ const WebModuleBuilder = () => {
 
   const ELEMENT_DEFS = {
     'm-text01': {
-      label: 'テキスト', tag: 'p', default: '新規テキスト',
-      template: `<$tag data-module="m-text01"><span class="wrapper"><span class="inner">$block</span></span></$tag>`.trim()
+      label: 'テキスト', tag: 'p',
+      template: `
+        <$tag data-module="m-text01">
+          <span class="wrapper">
+            <span class="inner" data-edit="html:テキスト内容">新規テキスト</span>
+          </span>
+        </$tag>`.trim()
+    },
+    'm-image01': {
+      label: '画像', tag: 'figure',
+      template: `
+        <$tag data-module="m-image01">
+          <span class="wrapper">
+            <span class="inner">
+              <img src="https://placehold.jp/200x120.png" alt="新規画像" data-edit="src:画像URL; alt:説明文(ALT)">
+            </span>
+          </span>
+        </$tag>`.trim()
     },
     'l-gridContents01': {
-      label: 'レイアウト', tag: 'div', attrs: ['data-grid', 'data-column-gap'], default: 'm-text01',
+      label: 'レイアウト', tag: 'div', 
+      attrs: ['data-grid', 'data-column-gap'], 
+      default: 'm-text01', // 増やす時の初期モジュールID
       template: `
         <$tag data-module="l-gridContents01">
           <div class="wrapper">
@@ -51,8 +69,11 @@ const WebModuleBuilder = () => {
     },
     'm-uList01': {
       label: 'リスト', tag: 'ul', 
-      default: 'm-text01', // 初期状態で中に入れたいモジュールIDを指定
-      template: `<$tag data-module="m-uList01"><li data-drop-zone></li></$tag>`.trim()
+      default: 'm-text01',
+      template: `
+        <$tag data-module="m-uList01">
+          <li data-drop-zone></li>
+        </$tag>`.trim()
     }
   };
 
@@ -117,6 +138,7 @@ const WebModuleBuilder = () => {
 
   const buildModuleTree = (root) => {
     if (!root) return [];
+    // rootの直下の子供だけを順番に見ていく
     return Array.from(root.children)
       .filter(el => !el.closest(CONFIG.SELECTORS.EXCLUDE_AREAS))
       .map(el => {
@@ -124,35 +146,42 @@ const WebModuleBuilder = () => {
         const mod = el.getAttribute(CONFIG.ATTRIBUTES.MODULE);
         const hasDropZone = el.hasAttribute('data-drop-zone');
 
+        // モジュール、コンポーネント、または枠（【s】）を見つけたら登録
         if (comp || mod || hasDropZone) {
           let label = "";
-          if (comp) {
-            label = `${CONFIG.LABELS.COMPONENT}${comp}`;
-          } else if (mod) {
-            label = `${mod.startsWith('l-') ? '【l】' : CONFIG.LABELS.MODULE}${mod}`;
-          } else if (hasDropZone) {
-            // 属性がないドロップゾーンは一律で【s】
-            label = CONFIG.LABELS.STRUCTURE;
-          }
+          if (comp) label = `${CONFIG.LABELS.COMPONENT}${comp}`;
+          else if (mod) label = `${mod.startsWith('l-') ? '【l】' : CONFIG.LABELS.MODULE}${mod}`;
+          else if (hasDropZone) label = CONFIG.LABELS.STRUCTURE;
 
           return {
             label: label,
             id: getOrSetId(el),
+            // その要素の「器」の中身を再帰的に解析
             children: buildModuleTree(findContentContainer(el))
           };
         }
+        // 属性がないタグ（wrapperなど）は、その中身を解析してフラットに返す
         return buildModuleTree(el);
       }).flat();
   };
 
   const applyNewOrder = (order, parentContainer) => {
     if (!order || !parentContainer) return;
+
+    // 1. 指定された親コンテナ（器）を一度空にする
+    // ※ただし、SortableJSが一時的に作ったUI要素などを消さないよう、管理下のIDを持つものだけを対象にする
+    const container = findContentContainer(parentContainer);
+    
+    // 2. 新しい順番（order）に従って、実DOMを appendChild で移動させる
+    // appendChild は「移動」なので、これで正しい順番に並び替わる
     order.forEach(item => {
       const targetEl = document.querySelector(`[${CONFIG.ATTRIBUTES.TREE_ID}="${item.id}"]`);
-      if (targetEl && parentContainer !== targetEl && !targetEl.contains(parentContainer)) {
-        parentContainer.appendChild(targetEl);
-        if (item.children?.length > 0) {
-          applyNewOrder(item.children, findContentContainer(targetEl));
+      if (targetEl) {
+        container.appendChild(targetEl);
+        
+        // 3. 子要素（item.children）があれば、その要素の「器」に対しても同じことをする
+        if (item.children && item.children.length > 0) {
+          applyNewOrder(item.children, targetEl);
         }
       }
     });
@@ -175,36 +204,58 @@ const WebModuleBuilder = () => {
   };
 
   const renderTree = (tree, parent) => {
-    const isParentLi = parent.tagName === 'LI';
-    const labelEl = isParentLi ? parent.querySelector(':scope > .parent .label-text') : null;
-    const parentLabel = labelEl ? labelEl.textContent : "";
-    
-    // STRUCTUREラベルが含まれているかどうかで判定
-    const isStructure = parentLabel.includes(CONFIG.LABELS.STRUCTURE);
-
-    if (tree.length === 0 && !isStructure && parent.id !== "tree-display-inner") return;
-
     const ul = document.createElement("ul");
     ul.className = 'sortable-list';
-    ul.style.minHeight = "20px";
-    ul.style.paddingBottom = "10px";
+    
+    // --- 修正箇所：親のラベルを確認してスタイルを分岐 ---
+    const parentLabel = parent.querySelector(':scope > .parent .label-text')?.textContent || "";
+    const isParentStructure = parentLabel.includes(CONFIG.LABELS.STRUCTURE) || parent.id === "tree-display-inner";
+
+    if (isParentStructure) {
+      // ドロップ可能なエリア（枠など）だけ、入れやすくするために隙間を作る
+      ul.style.minHeight = "20px";
+      ul.style.paddingBottom = "10px";
+      ul.style.background = "rgba(0,0,0,0.02)"; // 任意：入れ場所を分かりやすく
+    } else {
+      // 普通のモジュールの下には隙間を作らない
+      ul.style.minHeight = "0px";
+      ul.style.paddingBottom = "0px";
+    }
 
     tree.forEach(node => {
       const li = document.createElement("li");
       li.setAttribute('data-id', node.id);
       
-      // ここも新ラベルで判定
-      const isParentType = node.label.includes(CONFIG.LABELS.STRUCTURE);
-      const row = document.createElement(isParentType ? "p" : "div");
-      row.className = "parent" + (isParentType ? " no-drag" : "");
-
-      const dragHandle = !isParentType ? `<span class="drag-handle">≡</span>` : '';
+      const isStructure = node.label.includes(CONFIG.LABELS.STRUCTURE);
+      const row = document.createElement(isStructure ? "p" : "div");
+      row.className = "parent" + (isStructure ? " no-drag" : "");
+      
+      const dragHandle = !isStructure ? `<span class="drag-handle">≡</span>` : '';
       row.innerHTML = `${dragHandle}<span class="label-text">${node.label}</span>`;
       
       appendActionButtons(row, node);
       li.appendChild(row);
       
       renderTree(node.children || [], li);
+
+      // 枠追加ボタンのロジック（ここは既存のまま）
+      if (node.label.includes('【l】') || node.label.includes('m-uList01')) {
+        const addBtnWrap = document.createElement("div");
+        addBtnWrap.style.cssText = "padding: 2px 25px; margin-bottom: 8px;";
+        const addBtn = document.createElement("button");
+        addBtn.innerHTML = "+ 枠(s)を追加";
+        addBtn.style.cssText = "font-size: 10px; color: #007bff; background: #fff; border: 1px solid #007bff; border-radius: 3px; cursor: pointer; padding: 2px 10px;";
+        addBtn.onclick = (e) => {
+          e.stopPropagation();
+          const targetDom = document.querySelector(`[${CONFIG.ATTRIBUTES.TREE_ID}="${node.id}"]`);
+          if (targetDom) {
+            const dz = findContentContainer(targetDom);
+            if (dz) updateChildrenCount(targetDom, dz.children.length + 1);
+          }
+        };
+        addBtnWrap.appendChild(addBtn);
+        li.appendChild(addBtnWrap);
+      }
 
       row.onmouseenter = () => handleHover(node.id, true);
       row.onmouseleave = () => handleHover(node.id, false);
@@ -221,28 +272,43 @@ const WebModuleBuilder = () => {
       group: {
         name: 'nested',
         put: (to) => {
-          // ルートはOK
-          if (to.el.parentElement.id === "tree-display-inner") return true;
+          // 1. 安全ガード
+          if (!to || !to.el) return false;
 
-          // 親の実DOMを取得
-          const targetId = to.el.closest('li')?.getAttribute('data-id');
+          // 2. ルート（一番外側の表示エリア）への移動を許可
+          // classList を使うのが最も安全です
+          const isRoot = to.el.classList.contains('inner') || to.el.id === 'tree-display-inner';
+          if (isRoot) return true;
+
+          // 3. 親の li を取得
+          const targetLi = to.el.closest('li');
+          if (!targetLi) return false;
+
+          // 4. 実DOM側のドロップ可否判定
+          const targetId = targetLi.getAttribute('data-id');
           const targetDom = document.querySelector(`[${CONFIG.ATTRIBUTES.TREE_ID}="${targetId}"]`);
           
-          // 実DOMが data-drop-zone を持っていればドロップOK
-          return targetDom && targetDom.hasAttribute('data-drop-zone');
+          // data-drop-zone を持っている要素（【s】など）の中だけドロップ許可
+          return !!(targetDom && targetDom.hasAttribute('data-drop-zone'));
         }
       },
-      handle: '.drag-handle',
-      filter: '.no-drag, .edit-btn, .delete-btn, .tree-add-row, input, textarea, select',
-      // ... (以下End時の処理などは変更なし)
-      preventOnFilter: false,
+      // 修正：フィルターを「ドラッグ開始を阻害しない」程度に緩和
+      handle: '.drag-handle', 
+      filter: 'input, textarea, select, button, .no-drag',
+      preventOnFilter: false, // これが true だとボタンクリックすら効かなくなるので false
+      
       onEnd: () => {
-        const rootUl = document.querySelector(`${CONFIG.SELECTORS.TREE_DISPLAY_INNER} > ul`);
+        const rootArea = document.querySelector(CONFIG.SELECTORS.TREE_DISPLAY_INNER);
+        const rootUl = rootArea ? rootArea.querySelector('ul') : null;
         if (!rootUl) return;
-        const getOrder = (currUl) => Array.from(currUl.children).map(li => ({
-          id: li.getAttribute('data-id'),
-          children: li.querySelector(':scope > ul') ? getOrder(li.querySelector(':scope > ul')) : []
-        }));
+        
+        const getOrder = (currUl) => Array.from(currUl.children)
+          .filter(li => li.hasAttribute('data-id'))
+          .map(li => ({
+            id: li.getAttribute('data-id'),
+            children: li.querySelector(':scope > ul') ? getOrder(li.querySelector(':scope > ul')) : []
+          }));
+          
         const newOrder = getOrder(rootUl);
         applyNewOrder(newOrder, document.querySelector(CONFIG.SELECTORS.CONTAINER_INNER));
         saveHistory();
@@ -315,35 +381,34 @@ const WebModuleBuilder = () => {
   // ------------------------------------------
   // テンプレート生成ユーティリティ
   // ------------------------------------------
-  const createFromTemplate = (defId, content = "") => {
+  const createFromTemplate = (defId) => {
     const def = ELEMENT_DEFS[defId];
     if (!def) return null;
 
+    // $tag の置換だけを行う
     let html = def.template.replace(/\$tag/g, def.tag);
-    
-    // $block がテンプレートにある場合はテキスト置換
-    if (html.includes('$block')) {
-      html = html.replace('$block', content);
-    }
 
     const temp = document.createElement('div');
     temp.innerHTML = html.trim();
     const newEl = temp.firstElementChild;
+    
+    // IDの付与
     newEl.setAttribute(CONFIG.ATTRIBUTES.TREE_ID, "id-" + Math.random().toString(36).slice(2, 11));
     
-    // --- 子要素の自動生成ロジック ---
-    // default が別のモジュールID（ELEMENT_DEFSのキー）だった場合
-    if (ELEMENT_DEFS[def.default]) {
+    // レイアウトなどの初期属性付与
+    if (def.attrs) {
+      def.attrs.forEach(attr => newEl.setAttribute(attr, ""));
+    }
+
+    // 子要素（default）がある場合の自動生成
+    if (def.default && ELEMENT_DEFS[def.default]) {
       const dropZone = newEl.hasAttribute('data-drop-zone') ? newEl : newEl.querySelector('[data-drop-zone]');
       if (dropZone) {
-        const childEl = createFromTemplate(def.default, ELEMENT_DEFS[def.default].default || "");
+        const childEl = createFromTemplate(def.default);
         if (childEl) dropZone.appendChild(childEl);
       }
     }
 
-    if (def.attrs) {
-      def.attrs.forEach(attr => newEl.setAttribute(attr, ""));
-    }
     return newEl;
   };
 
@@ -406,15 +471,44 @@ const WebModuleBuilder = () => {
 
     // 1. 特殊編集（テキスト・タグ・属性・子要素数）の生成ロジック
     if (def) {
-      // テキスト内容編集
-      if (def.template.includes('$block')) {
-        const inner = targetEl.querySelector('.inner') || targetEl;
-        const textRow = document.createElement('div');
-        textRow.innerHTML = `<label style="font-size:11px; font-weight:bold; display:block; margin-top:10px;">テキスト内容:</label>
-          <textarea class="text-edit" style="width:100%; padding:5px; height:60px; font-size:12px; border:1px solid #ccc;">${inner.innerHTML}</textarea>`;
-        specWrap.appendChild(textRow);
-        textRow.querySelector('.text-edit').oninput = (e) => { inner.innerHTML = e.target.value; saveHistory(); };
-      }
+      // --- 修正箇所：コンテンツ編集エリア (data-edit属性のスキャン) ---
+      // targetEl（モジュール本体）の中から、data-edit属性を持つ要素をすべて探す
+      const editTargets = targetEl.querySelectorAll('[data-edit]');
+      
+      editTargets.forEach(el => {
+        // 例: data-edit="src:画像URL; alt:説明文" を分解
+        const configStr = el.getAttribute('data-edit');
+        const configs = configStr.split(';').map(s => s.trim());
+
+        configs.forEach(conf => {
+          const [type, label] = conf.split(':').map(s => s.trim());
+          const row = document.createElement('div');
+          row.style.marginTop = "10px";
+          
+          // 現在の値を取得
+          let currentVal = "";
+          if (type === 'src') currentVal = el.getAttribute('src');
+          else if (type === 'alt') currentVal = el.getAttribute('alt');
+          else if (type === 'text') currentVal = el.innerText;
+          else if (type === 'html') currentVal = el.innerHTML;
+
+          row.innerHTML = `
+            <label style="font-size:11px; font-weight:bold; display:block; margin-bottom:3px;">${label}:</label>
+            <textarea class="content-edit" style="width:100%; padding:5px; height:40px; font-size:12px; border:1px solid #ccc; font-family:sans-serif;">${currentVal || ''}</textarea>
+          `;
+
+          const textarea = row.querySelector('textarea');
+          textarea.oninput = (e) => {
+            const val = e.target.value;
+            if (type === 'src') el.setAttribute('src', val);
+            else if (type === 'alt') el.setAttribute('alt', val);
+            else if (type === 'text') el.innerText = val;
+            else if (type === 'html') el.innerHTML = val;
+            saveHistory();
+          };
+          specWrap.appendChild(row);
+        });
+      });
 
       // タグ編集
       const tagRow = document.createElement('div');
@@ -438,16 +532,6 @@ const WebModuleBuilder = () => {
       }
     }
 
-    // 子要素増減の表示判定
-    const dz = targetEl.querySelector('[data-drop-zone]') || (targetEl.hasAttribute('data-drop-zone') ? targetEl : null);
-    if (dz) {
-      const countRow = document.createElement('div');
-      countRow.innerHTML = `<label style="font-size:11px; font-weight:bold; display:block; margin-top:10px;">子要素数:</label>
-        <input type="number" class="count-input" value="${dz.children.length}" style="width:100%; padding:5px; border:1px solid #ccc;">`;
-      specWrap.appendChild(countRow);
-      countRow.querySelector('.count-input').onchange = (e) => updateChildrenCount(targetEl, parseInt(e.target.value));
-    }
-
     // 2. 既存スタイルの復元 (現在適用されているカスタム変数を探して表示)
     if (editData.initialStyles) {
       Object.entries(editData.initialStyles).forEach(([p, v]) => {
@@ -468,7 +552,51 @@ const WebModuleBuilder = () => {
   // 7. ユーティリティ (数値・単位入力ロジック)
   // ------------------------------------------
 
- 
+ // 専用の「枠追加」ボタン用関数
+  const addStructureFrame = (node) => {
+    const targetDom = document.querySelector(`[${CONFIG.ATTRIBUTES.TREE_ID}="${node.id}"]`);
+    if (!targetDom) return;
+    
+    const dz = findContentContainer(targetDom);
+    if (!dz) return;
+
+    // 現在の数 + 1 を指定して実行
+    updateChildrenCount(targetDom, dz.children.length + 1);
+  };
+
+
+  const updateChildrenCount = (targetDom, count) => {
+    const dz = findContentContainer(targetDom);
+    if (!dz) return;
+
+    const currentCount = dz.children.length;
+    const diff = count - currentCount;
+
+    if (diff > 0) {
+      const parentModId = targetDom.getAttribute(CONFIG.ATTRIBUTES.MODULE);
+      const defaultChildId = ELEMENT_DEFS[parentModId]?.default;
+
+      for (let i = 0; i < diff; i++) {
+        const isList = dz.tagName === 'UL';
+        const newChild = document.createElement(isList ? 'li' : 'div');
+        newChild.setAttribute('data-drop-zone', '');
+        newChild.setAttribute(CONFIG.ATTRIBUTES.TREE_ID, "id-" + Math.random().toString(36).slice(2, 11));
+        if (!isList) newChild.className = 'block contents';
+
+        // 初期モジュールの挿入
+        if (defaultChildId) {
+          const childEl = createFromTemplate(defaultChildId);
+          if (childEl) newChild.appendChild(childEl);
+        }
+        dz.appendChild(newChild);
+      }
+    } else if (diff < 0) {
+      for (let i = 0; i < Math.abs(diff); i++) {
+        if (dz.lastElementChild) dz.removeChild(dz.lastElementChild);
+      }
+    }
+    refreshTreeAndHistory();
+  };
 
   const addPropInput = (item, parent, targetId, fullVal = "") => {
     if (!parent || parent.querySelector(`[data-p="${item.prop}"]`)) return;
