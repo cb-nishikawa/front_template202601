@@ -145,6 +145,7 @@ export const createWebModuleBuilder = (options) => {
           <${node.isStructure ? "p" : "div"}
             class="parent${node.isStructure ? " no-drag" : ""}"
             data-row-id="${id}"
+            ${node.isStructure ? "data-tree-ignore" : ""}
           >
             ${node.isStructure ? "" : `<span class="drag-handle">≡</span>`}
             <span class="label-text">${escapeHtml(node.label)}</span>
@@ -157,7 +158,7 @@ export const createWebModuleBuilder = (options) => {
             ${node.children?.map(toHtml).join("") ?? ""}
           </ul>
           ${(!node.isStructure && node.children?.some(c => c.isStructure))
-            ? `<div class="tree-fast-add-wrap" data-fastadd-for="${id}"></div>`
+            ? `<div data-fastadd-for="${id}"></div>` // 単なるスロット。クラスは不要。
             : ""
           }
         </li>
@@ -201,7 +202,12 @@ export const createWebModuleBuilder = (options) => {
       const id = slot.getAttribute("data-fastadd-for");
       const node = findNodeById(tree, id);
       if (!node) return;
-      slot.replaceWith(createFastAddFrameBtn(node, ctx));
+
+      // 関数内で data-fast-add-container が付与された実DOMを生成
+      const fastAddBtnEl = createFastAddFrameBtn(node, ctx);
+      
+      // スロット(div)を生成したボタン要素で置換
+      slot.replaceWith(fastAddBtnEl);
     });
 
     // 5) hover（イベントデリゲーション）
@@ -234,23 +240,31 @@ export const createWebModuleBuilder = (options) => {
 
 
   
-  // ===================================================
+  // ======================================================================================================
   // 4. アクション生成 (ボタン・選択UI)
-  // ===================================================
+  // ======================================================================================================
 
-  /**
-   * 特定のモジュール内に「空の枠」を素早く増やすボタンを生成
-   */
+  // 特定のモジュール内に「空の枠」を素早く増やすボタンを生成
+  // ----------------------------------------------------
   const createFastAddFrameBtn = (node, ctx) => {
     const targetDZ = node.children.find(c => c.isStructure);
     if (!targetDZ) return document.createDocumentFragment();
 
-    const wrap = document.createElement("div");
-    wrap.className = "tree-fast-add-wrap"; 
-    const btn = document.createElement("button");
-    btn.className = "tree-fast-add-btn";
-    btn.innerHTML = `+ ${targetDZ.label}を追加`;
-    
+    // 1. デザイン用の純粋なHTMLリテラル
+    const html = `
+      <div class="tree-fast-add-wrap">
+        <button type="button" class="tree-fast-add-btn">+ ${targetDZ.label}を追加</button>
+      </div>
+    `.trim();
+
+    const fragment = document.createRange().createContextualFragment(html);
+    const wrap = fragment.firstElementChild;
+    const btn = wrap.querySelector('button');
+
+    // 2. ★ここでJS制御用のフラグ（data属性）を付与
+    // クラス名に依存せず、この属性がある要素を「高速追加ボタン」として扱えるようになる
+    wrap.dataset.fastAddContainer = node.id; 
+
     btn.onclick = (e) => {
       e.stopPropagation();
       const targetDom = document.querySelector(`[${ctx.CONFIG.ATTRIBUTES.TREE_ID}="${node.id}"]`);
@@ -259,45 +273,58 @@ export const createWebModuleBuilder = (options) => {
         updateChildrenCount(targetDom, currentCount + 1, ctx);
       }
     };
-    wrap.appendChild(btn);
+
     return wrap;
   };
+  // ----------------------------------------------------
 
-  /**
-   * モジュールを追加するためのセレクトボックスを生成
-   */
+
+  // モジュール追加ボタン
+  // ----------------------------------------------------
   const createAddRow = (node, isRoot, ctx) => {
-    const select = document.createElement("select");
-    select.className = "module-add-select";
-    select.innerHTML = `<option value="">＋</option>` + 
-      Object.entries(ctx.ELEMENT_DEFS).map(([key, def]) => `<option value="${key}">${def.label}</option>`).join('');
-    
+    const options = Object.entries(ctx.ELEMENT_DEFS)
+      .map(([key, def]) => `<option value="${key}">${def.label}</option>`)
+      .join('');
+
+    const html = `
+      <select class="module-add-select" data-tree-ignore>
+        <option value="">＋</option>
+        ${options}
+      </select>
+    `.trim();
+
+    const select = document.createRange().createContextualFragment(html).firstElementChild;
+
     select.onchange = (e) => {
       const val = e.target.value;
       if (!val) return;
+
       const container = node 
         ? findContentContainer(document.querySelector(`[${ctx.CONFIG.ATTRIBUTES.TREE_ID}="${node.id}"]`)) 
         : document.querySelector(ctx.CONFIG.SELECTORS.CONTAINER_INNER);
       
       if (container) {
         const newEl = createFromTemplate(val, ctx);
-        // 先頭に追加
+        // node指定があればそのコンテナの先頭へ、なければルートの最後へ
         node ? container.insertBefore(newEl, container.firstChild) : container.appendChild(newEl);
         syncView();
       }
       e.target.value = "";
     };
+
     return select;
   };
 
-  /**
-   * 編集ボタンを生成
-   */
+  // ----------------------------------------------------
+
+
+  // 編集ボタン
+  // ----------------------------------------------------
   const createEditButton = (node, ctx) => {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "btn-edit";
-    btn.textContent = "⚙";
+    const html = `<button type="button" class="btn-edit" title="編集" data-tree-ignore>⚙</button>`;
+    
+    const btn = document.createRange().createContextualFragment(html).firstElementChild;
+
     btn.onclick = (e) => {
       e.stopPropagation();
       openEditPanel(node, ctx);
@@ -305,14 +332,18 @@ export const createWebModuleBuilder = (options) => {
     return btn;
   };
 
-  /**
-   * 削除ボタンを生成
-   */
+  // ----------------------------------------------------
+
+
+
+  // 削除ボタン
+  // ----------------------------------------------------
+
   const createDeleteButton = (node, ctx) => {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "btn-del";
-    btn.textContent = "×";
+    const html = `<button type="button" class="btn-del" title="削除" data-tree-ignore>×</button>`;
+
+    const btn = document.createRange().createContextualFragment(html).firstElementChild;
+
     btn.onclick = (e) => {
       e.stopPropagation();
       const targetDom = document.querySelector(`[${ctx.CONFIG.ATTRIBUTES.TREE_ID}="${node.id}"]`);
@@ -324,7 +355,9 @@ export const createWebModuleBuilder = (options) => {
     return btn;
   };
 
+  // ----------------------------------------------------
 
+ // ======================================================================================================
 
 
 
@@ -332,9 +365,9 @@ export const createWebModuleBuilder = (options) => {
 
 
   
-  // ===================================================
+  // ======================================================================================================
   // 5. DOM操作・テンプレート生成
-  // ===================================================
+  // ======================================================================================================
 
   /**
    * 枠の数を増減させる (グリッドやリスト用)
@@ -382,6 +415,7 @@ export const createWebModuleBuilder = (options) => {
     return newEl;
   };
 
+  // ======================================================================================================
 
 
 
@@ -447,7 +481,7 @@ export const createWebModuleBuilder = (options) => {
       handle: '.drag-handle',
       fallbackOnBody: true,
       swapThreshold: 0.65,
-      filter: '.no-drag, input, select, button, .module-add-select',
+      filter: '[data-tree-ignore], input, select, button',
       preventOnFilter: false,
       onEnd: () => {
         const displayInner = document.querySelector(ctx.CONFIG.SELECTORS.TREE_DISPLAY_INNER);
