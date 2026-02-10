@@ -34,7 +34,6 @@ export const createWebModuleBuilder = (options) => {
   
   const buildModuleTree = (root) => {
     if (!root) return [];
-    // 属性名を変数化（例: 'data-drop-zone'）
     const dropZoneAttr = ctx.CONFIG.ATTRIBUTES.DROP_ZONE; 
 
     return Array.from(root.children)
@@ -42,18 +41,27 @@ export const createWebModuleBuilder = (options) => {
       .map(el => {
         const comp = el.getAttribute(ctx.CONFIG.ATTRIBUTES.COMPONENT);
         const mod = el.getAttribute(ctx.CONFIG.ATTRIBUTES.MODULE);
-        // ハードコードを ctx.CONFIG 参照に変更
         const hasDropZone = el.hasAttribute(dropZoneAttr);
+        const dropZoneVal = el.getAttribute(dropZoneAttr); // 属性の値を取得
 
         if (comp || mod || hasDropZone) {
           let label = "";
-          if (comp) label = `${ctx.LABELS.COMPONENT}${comp}`;
-          else if (mod) label = `${mod.startsWith('l-') ? '【l】' : ctx.LABELS.MODULE}${mod}`;
-          else if (hasDropZone) label = ctx.LABELS.STRUCTURE;
+
+          if (comp || mod) {
+            // モジュール/コンポーネントの場合：ELEMENT_DEFS から日本語ラベルを取得
+            const defKey = comp || mod;
+            const definition = ctx.ELEMENT_DEFS[defKey];
+            label = definition ? definition.label : defKey;
+          } else if (hasDropZone) {
+            // 枠（DropZone）の場合：属性に値があればそれを使い、なければ共通ラベル（【s】）
+            label = dropZoneVal || ctx.LABELS.STRUCTURE;
+          }
 
           return {
             label: label,
             id: getOrSetId(el),
+            // nodeにisStructureフラグを持たせておくとrenderTreeでの判定が楽になります
+            isStructure: hasDropZone,
             children: buildModuleTree(findContentContainer(el))
           };
         }
@@ -218,34 +226,28 @@ export const createWebModuleBuilder = (options) => {
     const ul = document.createElement("ul");
     ul.className = 'sortable-list';
     
-    const parentLabel = parent.querySelector(':scope > .parent .label-text')?.textContent || "";
-    const isParentStructure = parentLabel.includes(ctx.LABELS.STRUCTURE) || parent.id === "tree-display-inner";
-    
-    if (isParentStructure) {
-      ul.classList.add('is-structure-list');
-    }
+    // ... (isParentStructureの判定ロジックはそのまま)
 
     tree.forEach(node => {
       const li = document.createElement("li");
       li.setAttribute('data-id', node.id);
       li.className = 'tree-item';
 
-      const isStructure = node.label.includes(ctx.LABELS.STRUCTURE);
-      const row = document.createElement(isStructure ? "p" : "div");
-      row.className = "parent" + (isStructure ? " no-drag" : "");
+      // node.isStructure を直接参照
+      const row = document.createElement(node.isStructure ? "p" : "div");
+      row.className = "parent" + (node.isStructure ? " no-drag" : "");
       
-      row.innerHTML = `${!isStructure ? '<span class="drag-handle">≡</span>' : ''}<span class="label-text">${node.label}</span>`;
+      // buildModuleTree で確定した label を表示
+      row.innerHTML = `${!node.isStructure ? '<span class="drag-handle">≡</span>' : ''}<span class="label-text">${node.label}</span>`;
       
       appendActionButtons(row, node, ctx);
       li.appendChild(row);
       renderTree(node.children || [], li, ctx);
 
-      // レイアウト要素またはリスト要素の場合、末尾に「枠追加」ボタンを表示
-      const hasStructureChild = node.children && node.children.some(child => 
-        child.label.includes(ctx.LABELS.STRUCTURE)
-      );
+      // 枠追加ボタンの条件：自分自身が枠ではなく、かつ子要素に枠を持っている場合
+      const hasStructureChild = node.children && node.children.some(child => child.isStructure);
 
-      if (!isStructure && hasStructureChild) {
+      if (!node.isStructure && hasStructureChild) {
         li.appendChild(createFastAddFrameBtn(node, ctx));
       }
 
@@ -262,18 +264,25 @@ export const createWebModuleBuilder = (options) => {
    * レイアウト等の中身に、新しい「空の枠(structure)」を素早く追加するボタンを作る
    */
   const createFastAddFrameBtn = (node, ctx) => {
+    // 子要素の中から、最初に定義されている DropZone (isStructure) を探す
+    const targetStructure = node.children.find(child => child.isStructure);
+    if (!targetStructure) return document.createDocumentFragment();
+
     const wrap = document.createElement("div");
     wrap.className = "tree-fast-add-wrap"; 
-    
     const btn = document.createElement("button");
     btn.className = "tree-fast-add-btn";
-    btn.innerHTML = "+ 枠(s)を追加";
+    
+    // DropZone 自体が持っているラベル（「グリッド」や「リスト」）を使用
+    btn.innerHTML = `+ ${targetStructure.label}を追加`;
     
     btn.onclick = (e) => {
       e.stopPropagation();
       const targetDom = document.querySelector(`[${ctx.CONFIG.ATTRIBUTES.TREE_ID}="${node.id}"]`);
       if (targetDom) {
-        updateChildrenCount(targetDom, findContentContainer(targetDom).children.length + 1, ctx);
+        // 現在の「器（inner）」の中にある子要素の数 + 1 に更新する
+        const container = findContentContainer(targetDom);
+        updateChildrenCount(targetDom, container.children.length + 1, ctx);
       }
     };
     
@@ -356,14 +365,25 @@ export const createWebModuleBuilder = (options) => {
    */
   const updateChildrenCount = (targetDom, count, ctx) => {
     const dz = findContentContainer(targetDom);
-    const diff = count - dz.children.length;
+    const diff = count - dz.children.length; // ここで現在の数と比較
+    const dropZoneAttr = ctx.CONFIG.ATTRIBUTES.DROP_ZONE;
+
     if (diff > 0) {
-      const def = ctx.ELEMENT_DEFS[targetDom.getAttribute(ctx.CONFIG.ATTRIBUTES.MODULE)];
+      // 自分のモジュール名（l-gridContents01など）を取得
+      const modName = targetDom.getAttribute(ctx.CONFIG.ATTRIBUTES.MODULE);
+      const def = ctx.ELEMENT_DEFS[modName];
+
       for (let i = 0; i < diff; i++) {
         const isList = dz.tagName === 'UL';
         const newChild = document.createElement(isList ? 'li' : 'div');
-        newChild.setAttribute('data-drop-zone', '');
+        
+        // ★重要：元々のDropZoneが持っていた「名前（属性値）」を引き継ぐ
+        const originalDZ = dz.querySelector(`[${dropZoneAttr}]`) || dz.firstElementChild;
+        const dzLabel = originalDZ?.getAttribute(dropZoneAttr) || "";
+        
+        newChild.setAttribute(dropZoneAttr, dzLabel); // ここで「グリッド」等の名前を維持
         newChild.setAttribute(ctx.CONFIG.ATTRIBUTES.TREE_ID, "id-" + Math.random().toString(36).slice(2, 11));
+        
         if (def?.default) newChild.appendChild(createFromTemplate(def.default, ctx));
         dz.appendChild(newChild);
       }
