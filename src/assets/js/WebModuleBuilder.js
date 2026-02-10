@@ -36,27 +36,35 @@ export const createWebModuleBuilder = (options) => {
   
   const buildModuleTree = (root) => {
     if (!root) return [];
-    // 属性名を変数化（例: 'data-drop-zone'）
-    const dropZoneAttr = ctx.CONFIG.ATTRIBUTES.DROP_ZONE; 
+    const { DROP_ZONE, COMPONENT, MODULE } = ctx.CONFIG.ATTRIBUTES;
 
     return Array.from(root.children)
       .filter(el => !el.closest(ctx.CONFIG.SELECTORS.EXCLUDE_AREAS))
       .map(el => {
-        const comp = el.getAttribute(ctx.CONFIG.ATTRIBUTES.COMPONENT);
-        const mod = el.getAttribute(ctx.CONFIG.ATTRIBUTES.MODULE);
-        // ハードコードを ctx.CONFIG 参照に変更
-        const hasDropZone = el.hasAttribute(dropZoneAttr);
+        const name = el.getAttribute(COMPONENT) || el.getAttribute(MODULE);
+        const dropZoneValue = el.getAttribute(DROP_ZONE); // 属性の値を取得
+        const isStructure = el.hasAttribute(DROP_ZONE);
 
-        if (comp || mod || hasDropZone) {
-          let label = "";
-          if (comp) label = `${ctx.LABELS.COMPONENT}${comp}`;
-          else if (mod) label = `${mod.startsWith('l-') ? '【l】' : ctx.LABELS.MODULE}${mod}`;
-          else if (hasDropZone) label = ctx.LABELS.STRUCTURE;
+        if (name || isStructure) {
+          const contentContainer = findContentContainer(el);
+          
+          // 表示名の決定ロジック
+          let displayName = "";
+          if (name) {
+            // モジュール名がある場合は定義から引く
+            displayName = ctx.ELEMENT_DEFS[name]?.label || name;
+          } else if (isStructure) {
+            // DropZoneの場合は、属性値があればそれ、なければ共通ラベル
+            displayName = dropZoneValue || ctx.LABELS.STRUCTURE;
+          }
 
           return {
-            label: label,
             id: getOrSetId(el),
-            children: buildModuleTree(findContentContainer(el))
+            name: name,
+            displayName: displayName, // ここで個別の名前が確定
+            isStructure: isStructure,
+            canAddFrame: !isStructure && el.querySelector(`[${DROP_ZONE}]`) !== null,
+            children: buildModuleTree(contentContainer)
           };
         }
         return buildModuleTree(el);
@@ -232,22 +240,28 @@ export const createWebModuleBuilder = (options) => {
       li.setAttribute('data-id', node.id);
       li.className = 'tree-item';
 
-      const isStructure = node.label.includes(ctx.LABELS.STRUCTURE);
-      const row = document.createElement(isStructure ? "p" : "div");
-      row.className = "parent" + (isStructure ? " no-drag" : "");
+      const row = document.createElement(node.isStructure ? "p" : "div");
+      row.className = "parent" + (node.isStructure ? " no-drag" : "");
       
-      row.innerHTML = `${!isStructure ? '<span class="drag-handle">≡</span>' : ''}<span class="label-text">${node.label}</span>`;
+      // --- ★ 修正箇所：ELEMENT_DEFS からラベルを取得する ---
+      let labelText = ctx.LABELS.STRUCTURE; // デフォルトは 【s】
+
+      if (node.name) {
+        // ELEMENT_DEFS に定義があればその label を、なければ生の名前を表示
+        const definition = ctx.ELEMENT_DEFS[node.name];
+        labelText = definition ? definition.label : node.name;
+      }
+      // --------------------------------------------------
+
+      // buildModuleTreeで決めた個別の名前を出すだけ
+      row.innerHTML = `${!node.isStructure ? '<span class="drag-handle">≡</span>' : ''}<span class="label-text">${node.displayName}</span>`;
       
       appendActionButtons(row, node, ctx);
       li.appendChild(row);
+
       renderTree(node.children || [], li, ctx);
 
-      // レイアウト要素またはリスト要素の場合、末尾に「枠追加」ボタンを表示
-      const hasStructureChild = node.children && node.children.some(child => 
-        child.label.includes(ctx.LABELS.STRUCTURE)
-      );
-
-      if (!isStructure && hasStructureChild) {
+      if (node.canAddFrame) {
         li.appendChild(createFastAddFrameBtn(node, ctx));
       }
 
@@ -269,13 +283,19 @@ export const createWebModuleBuilder = (options) => {
     
     const btn = document.createElement("button");
     btn.className = "tree-fast-add-btn";
-    btn.innerHTML = "+ 枠(s)を追加";
+    
+    // --- 修正箇所：固定テキストをやめて node.displayName を使う ---
+    // 例：「+ グリッド枠を追加」「+ リスト枠を追加」など
+    btn.innerHTML = `+ ${node.displayName}を追加`;
+    // ---------------------------------------------------------
     
     btn.onclick = (e) => {
       e.stopPropagation();
       const targetDom = document.querySelector(`[${ctx.CONFIG.ATTRIBUTES.TREE_ID}="${node.id}"]`);
       if (targetDom) {
-        updateChildrenCount(targetDom, findContentContainer(targetDom).children.length + 1, ctx);
+        // 現在の子要素の数 + 1 で更新
+        const currentCount = findContentContainer(targetDom).children.length;
+        updateChildrenCount(targetDom, currentCount + 1, ctx);
       }
     };
     

@@ -43,14 +43,14 @@ export const ELEMENT_DEFS = {
       </$tag>`.trim()
   },
   'l-gridContents01': {
-    label: 'レイアウト', tag: 'div', 
+    label: 'グリッド', tag: 'div', 
     attrs: ['data-grid', 'data-column-gap'], 
     default: 'm-text01',
     template: `
       <$tag data-module="l-gridContents01">
         <div class="wrapper">
           <div class="inner">
-            <div class="block contents" data-drop-zone></div>
+            <div class="block contents" data-drop-zone="グリッド"></div>
           </div>
         </div>
       </$tag>`.trim()
@@ -60,7 +60,7 @@ export const ELEMENT_DEFS = {
     default: 'm-text01',
     template: `
       <$tag data-module="m-uList01">
-        <li data-drop-zone></li>
+        <li data-drop-zone="リスト"></li>
       </$tag>`.trim()
   }
 };
