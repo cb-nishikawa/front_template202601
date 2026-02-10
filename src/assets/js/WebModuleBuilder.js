@@ -253,8 +253,7 @@ export const createWebModuleBuilder = (options) => {
       }
       // --------------------------------------------------
 
-      // buildModuleTreeで決めた個別の名前を出すだけ
-      row.innerHTML = `${!node.isStructure ? '<span class="drag-handle">≡</span>' : ''}<span class="label-text">${node.displayName}</span>`;
+      row.innerHTML = `${!node.isStructure ? '<span class="drag-handle">≡</span>' : ''}<span class="label-text">${labelText}</span>`;
       
       appendActionButtons(row, node, ctx);
       li.appendChild(row);
@@ -283,19 +282,13 @@ export const createWebModuleBuilder = (options) => {
     
     const btn = document.createElement("button");
     btn.className = "tree-fast-add-btn";
-    
-    // --- 修正箇所：固定テキストをやめて node.displayName を使う ---
-    // 例：「+ グリッド枠を追加」「+ リスト枠を追加」など
-    btn.innerHTML = `+ ${node.displayName}を追加`;
-    // ---------------------------------------------------------
+    btn.innerHTML = "+ 枠(s)を追加";
     
     btn.onclick = (e) => {
       e.stopPropagation();
       const targetDom = document.querySelector(`[${ctx.CONFIG.ATTRIBUTES.TREE_ID}="${node.id}"]`);
       if (targetDom) {
-        // 現在の子要素の数 + 1 で更新
-        const currentCount = findContentContainer(targetDom).children.length;
-        updateChildrenCount(targetDom, currentCount + 1, ctx);
+        updateChildrenCount(targetDom, findContentContainer(targetDom).children.length + 1, ctx);
       }
     };
     

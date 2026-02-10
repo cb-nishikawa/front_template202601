@@ -43,7 +43,7 @@ export const ELEMENT_DEFS = {
       </$tag>`.trim()
   },
   'l-gridContents01': {
-    label: 'グリッド', tag: 'div', 
+    label: 'グリッドセット', tag: 'div', 
     attrs: ['data-grid', 'data-column-gap'], 
     default: 'm-text01',
     template: `
@@ -56,7 +56,7 @@ export const ELEMENT_DEFS = {
       </$tag>`.trim()
   },
   'm-uList01': {
-    label: 'リスト', tag: 'ul', 
+    label: 'リストセット', tag: 'ul', 
     default: 'm-text01',
     template: `
       <$tag data-module="m-uList01">
