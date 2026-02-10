@@ -14,10 +14,8 @@ export const createWebModuleBuilder = (options) => {
    * (wrapper/inner構造を考慮して、実際に要素が追加される場所を特定する)
    */
   const findContentContainer = (el) => {
-    const dropZoneAttr = ctx.CONFIG.ATTRIBUTES.DROP_ZONE;
-    if (el.hasAttribute(dropZoneAttr)) return el;
-    // セレクタとして使う場合は属性名に [] をつける
-    return el.querySelector(`:scope > .wrapper > .inner, :scope > .inner, :scope > [${dropZoneAttr}]`) || el;
+    if (el.hasAttribute('data-drop-zone')) return el;
+    return el.querySelector(':scope > .wrapper > .inner') || el.querySelector(':scope > .inner') || el;
   };
 
   /**
@@ -36,35 +34,27 @@ export const createWebModuleBuilder = (options) => {
   
   const buildModuleTree = (root) => {
     if (!root) return [];
-    const { DROP_ZONE, COMPONENT, MODULE } = ctx.CONFIG.ATTRIBUTES;
+    // 属性名を変数化（例: 'data-drop-zone'）
+    const dropZoneAttr = ctx.CONFIG.ATTRIBUTES.DROP_ZONE; 
 
     return Array.from(root.children)
       .filter(el => !el.closest(ctx.CONFIG.SELECTORS.EXCLUDE_AREAS))
       .map(el => {
-        const name = el.getAttribute(COMPONENT) || el.getAttribute(MODULE);
-        const dropZoneValue = el.getAttribute(DROP_ZONE); // 属性の値を取得
-        const isStructure = el.hasAttribute(DROP_ZONE);
+        const comp = el.getAttribute(ctx.CONFIG.ATTRIBUTES.COMPONENT);
+        const mod = el.getAttribute(ctx.CONFIG.ATTRIBUTES.MODULE);
+        // ハードコードを ctx.CONFIG 参照に変更
+        const hasDropZone = el.hasAttribute(dropZoneAttr);
 
-        if (name || isStructure) {
-          const contentContainer = findContentContainer(el);
-          
-          // 表示名の決定ロジック
-          let displayName = "";
-          if (name) {
-            // モジュール名がある場合は定義から引く
-            displayName = ctx.ELEMENT_DEFS[name]?.label || name;
-          } else if (isStructure) {
-            // DropZoneの場合は、属性値があればそれ、なければ共通ラベル
-            displayName = dropZoneValue || ctx.LABELS.STRUCTURE;
-          }
+        if (comp || mod || hasDropZone) {
+          let label = "";
+          if (comp) label = `${ctx.LABELS.COMPONENT}${comp}`;
+          else if (mod) label = `${mod.startsWith('l-') ? '【l】' : ctx.LABELS.MODULE}${mod}`;
+          else if (hasDropZone) label = ctx.LABELS.STRUCTURE;
 
           return {
+            label: label,
             id: getOrSetId(el),
-            name: name,
-            displayName: displayName, // ここで個別の名前が確定
-            isStructure: isStructure,
-            canAddFrame: !isStructure && el.querySelector(`[${DROP_ZONE}]`) !== null,
-            children: buildModuleTree(contentContainer)
+            children: buildModuleTree(findContentContainer(el))
           };
         }
         return buildModuleTree(el);
@@ -240,27 +230,22 @@ export const createWebModuleBuilder = (options) => {
       li.setAttribute('data-id', node.id);
       li.className = 'tree-item';
 
-      const row = document.createElement(node.isStructure ? "p" : "div");
-      row.className = "parent" + (node.isStructure ? " no-drag" : "");
+      const isStructure = node.label.includes(ctx.LABELS.STRUCTURE);
+      const row = document.createElement(isStructure ? "p" : "div");
+      row.className = "parent" + (isStructure ? " no-drag" : "");
       
-      // --- ★ 修正箇所：ELEMENT_DEFS からラベルを取得する ---
-      let labelText = ctx.LABELS.STRUCTURE; // デフォルトは 【s】
-
-      if (node.name) {
-        // ELEMENT_DEFS に定義があればその label を、なければ生の名前を表示
-        const definition = ctx.ELEMENT_DEFS[node.name];
-        labelText = definition ? definition.label : node.name;
-      }
-      // --------------------------------------------------
-
-      row.innerHTML = `${!node.isStructure ? '<span class="drag-handle">≡</span>' : ''}<span class="label-text">${labelText}</span>`;
+      row.innerHTML = `${!isStructure ? '<span class="drag-handle">≡</span>' : ''}<span class="label-text">${node.label}</span>`;
       
       appendActionButtons(row, node, ctx);
       li.appendChild(row);
-
       renderTree(node.children || [], li, ctx);
 
-      if (node.canAddFrame) {
+      // レイアウト要素またはリスト要素の場合、末尾に「枠追加」ボタンを表示
+      const hasStructureChild = node.children && node.children.some(child => 
+        child.label.includes(ctx.LABELS.STRUCTURE)
+      );
+
+      if (!isStructure && hasStructureChild) {
         li.appendChild(createFastAddFrameBtn(node, ctx));
       }
 
