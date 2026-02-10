@@ -62,76 +62,9 @@ export class WebModuleBuilder {
 
   /**
    * JSONデータから実DOM（プレビュー用）を生成する
-   * @param {Object} nodeData - 1つ分のノードデータ
-   */
-  renderNode(nodeData) {
-    // --- 【重要】枠（structure-box）の処理を修正 ---
-    if (nodeData.type === 'structure-box') {
-      // プレビュー側でも、中身を包む「実際の要素」を作成する
-      // ここでは、親の data-drop-zone を持っていた要素と同じ役割を果たす div を作る
-      const wrapper = document.createElement('div');
-      
-      // 識別用にIDなどを付与（必要に応じて）
-      wrapper.setAttribute(this.ctx.CONFIG.ATTRIBUTES.TREE_ID, nodeData.id);
-      
-      if (nodeData.children) {
-        nodeData.children.forEach(child => {
-          const childDom = this.renderNode(child);
-          if (childDom) wrapper.appendChild(childDom);
-        });
-      }
-      // Fragmentではなく、wrapper(div)そのものを返すことで構造を維持する
-      return wrapper;
-    }
-
-    // --- 通常のモジュールの処理 ---
-    const def = this.ctx.ELEMENT_DEFS[nodeData.type];
-    if (!def) return null;
-
-    let html = def.template.replace(/\$tag/g, def.tag);
-    
-    const content = nodeData.content || def.defaultContent || "";
-    html = html.replace(/\$content/g, content);
-
-    const attrs = nodeData.attrs || {};
-    html = html.replace(/\$src/g, attrs.src || "https://via.placeholder.com/150");
-    html = html.replace(/\$alt/g, attrs.alt || "");
-    html = html.replace(/\$href/g, attrs.href || "#");
-
-    const temp = document.createElement('div');
-    temp.innerHTML = html.trim();
-    const el = temp.firstElementChild;
-
-    el.setAttribute(this.ctx.CONFIG.ATTRIBUTES.TREE_ID, nodeData.id);
-    el.setAttribute(this.ctx.CONFIG.ATTRIBUTES.MODULE, nodeData.type);
-
-    if (nodeData.children && nodeData.children.length > 0) {
-      const dzAttr = this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE;
-      const dz = el.hasAttribute(dzAttr) ? el : el.querySelector(`[${dzAttr}]`);
-
-      if (dz) {
-        nodeData.children.forEach(childData => {
-          const childDom = this.renderNode(childData);
-          if (childDom) {
-            dz.appendChild(childDom);
-          }
-        });
-      }
-    }
-
-    return el;
-  }
-  // ---------------------------------------------------------------
-
-
-
-  /**
-   * JSONデータから実DOM（プレビュー用）を生成する
-   * @param {Object} nodeData - 1つ分のノードデータ
-   * @returns {Element|DocumentFragment} 生成されたDOM
    */
   renderNode(nodeData, parentDef = null) {
-    // 1. structure-box（枠）の処理
+    // 1. structure-box（グリッドの枠など）の描画
     if (nodeData.type === 'structure-box') {
       let wrapper;
       if (parentDef) {
@@ -151,39 +84,38 @@ export class WebModuleBuilder {
       return wrapper;
     }
 
-    // 2. 通常モジュールの処理
+    // 2. 通常モジュールの描画
     const def = this.ctx.ELEMENT_DEFS[nodeData.type];
     if (!def) return null;
 
     let html = def.template.replace(/\$tag/g, def.tag);
+    const attrs = nodeData.attrs || {};
 
-    // 【重要：修正ポイント】data-edit の解析を安全に行う
+    // --- 【新機能】$data:属性名:ラベル:初期値 の置換処理 ---
+    const dataRegex = /\$data:([\w-]+):([^:]+):([\w-]+):([^:">]+)(?::\[([^\]]+)\])?/g;
+    html = html.replace(dataRegex, (match, key, label, type, defaultVal) => {
+      return (attrs[key] !== undefined && attrs[key] !== "") ? attrs[key] : defaultVal;
+    });
+
+    // --- data-edit属性に基づく初期値解析 (URLコロン対策済み) ---
     const parser = document.createElement('div');
     parser.innerHTML = html;
-    const editEls = parser.querySelectorAll('[data-edit]');
     const defaults = {};
-
-    editEls.forEach(el => {
+    parser.querySelectorAll('[data-edit]').forEach(el => {
       el.getAttribute('data-edit').split(';').forEach(conf => {
-        // split(':') ではなく、最初の2つのコロンだけを対象にする
         const parts = conf.split(':').map(s => s.trim());
-        const key = parts[0];
-        const label = parts[1];
-        // 3番目以降（URLなど）をすべて結合して初期値とする
-        const defaultVal = parts.slice(2).join(':'); 
-        
-        if (key) defaults[key] = defaultVal;
+        if (parts.length >= 3) {
+          defaults[parts[0]] = parts.slice(2).join(':'); // URLなどのコロンを維持
+        }
       });
     });
 
-    // 置換処理
+    // テキスト内容($html)の置換
     const content = (nodeData.content !== undefined && nodeData.content !== "") ? nodeData.content : (defaults['html'] || "");
     html = html.split('$html').join(content);
 
-    const attrs = nodeData.attrs || {};
-    // src, href, alt などの属性を置換
-    Object.keys(defaults).forEach(key => {
-      if (key === 'html') return;
+    // 属性($src, $href, $alt)の置換
+    ['src', 'href', 'alt'].forEach(key => {
       const val = (attrs[key] !== undefined && attrs[key] !== "") ? attrs[key] : (defaults[key] || "");
       html = html.split(`$${key}`).join(val);
     });
@@ -194,7 +126,7 @@ export class WebModuleBuilder {
     el.setAttribute(this.ctx.CONFIG.ATTRIBUTES.TREE_ID, nodeData.id);
     el.setAttribute(this.ctx.CONFIG.ATTRIBUTES.MODULE, nodeData.type);
 
-    // 3. 子要素（入れ子）の処理
+    // 3. 入れ子（子要素）の描画
     const dzAttr = this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE;
     const dz = el.hasAttribute(dzAttr) ? el : el.querySelector(`[${dzAttr}]`);
     if (dz) {
@@ -210,7 +142,6 @@ export class WebModuleBuilder {
         if (dz !== el) dz.remove();
       }
     }
-
     return el;
   }
   // ---------------------------------------------------------------
@@ -430,78 +361,76 @@ export class WebModuleBuilder {
     const styleBlock = document.querySelector(this.ctx.CONFIG.SELECTORS.STYLE_BLOCK);
     if (!masterNode || !container || !styleBlock) return;
 
-    // パネルを表示して中身をクリア
     styleBlock.classList.remove('is-hidden');
     container.innerHTML = "";
-
     const panelBase = this.ui.createEditPanelBase(masterNode, this.ctx.STYLE_DEFS);
     container.appendChild(panelBase);
 
     const def = this.ctx.ELEMENT_DEFS[masterNode.type];
     const specWrap = panelBase.querySelector('#content-specific-editor');
+    if (!def || !specWrap) return;
 
-    if (def && specWrap) {
-      const temp = document.createElement('div');
-      temp.innerHTML = def.template;
-      const editEls = temp.querySelectorAll('[data-edit]');
+    // --- A. data-edit（html, src等）の解析 ---
+    const temp = document.createElement('div');
+    temp.innerHTML = def.template;
+    temp.querySelectorAll('[data-edit]').forEach(el => {
+      el.getAttribute('data-edit').split(';').forEach(conf => {
+        const parts = conf.split(':').map(s => s.trim());
+        const key = parts[0], label = parts[1];
+        const defaultVal = parts.slice(2).join(':');
 
-      editEls.forEach(el => {
-        el.getAttribute('data-edit').split(';').forEach(conf => {
-          // コロンで分割。parts[2]以降にURLが含まれる可能性があるため slice().join(':') を使用
-          const parts = conf.split(':').map(s => s.trim());
-          const key = parts[0];
-          const label = parts[1];
-          const defaultVal = parts.slice(2).join(':');
-
-          let currentVal = "";
-          if (key === 'html') {
-            // データがなければ初期値を代入して保持
-            if (masterNode.content === undefined || masterNode.content === "") {
-              masterNode.content = defaultVal;
-            }
-            currentVal = masterNode.content;
-          } else {
-            if (!masterNode.attrs) masterNode.attrs = {};
-            // 属性（src等）がなければ初期値を代入して保持
-            if (masterNode.attrs[key] === undefined || masterNode.attrs[key] === "") {
-              masterNode.attrs[key] = defaultVal;
-            }
-            currentVal = masterNode.attrs[key];
-          }
-
-          // UIフィールドの作成（入力時に即座に this.data を更新して再描画）
-          const row = this.ui.createEditFieldRow(label, currentVal, (newVal) => {
-            if (key === 'html') {
-              masterNode.content = newVal;
-              
-              // 【ここを追加】data-tree-view が指定されている場合、ツリーのラベルも更新する
-              const tempDiv = document.createElement('div');
-              tempDiv.innerHTML = def.template;
-              if (tempDiv.querySelector('[data-tree-view]')) {
-                masterNode.label = newVal || def.label; // 空なら定義のラベルに戻す
-              }
-            } else {
-              masterNode.attrs[key] = newVal;
-            }
-            // プレビューとサイドバーを同期
+        if (key === 'html') {
+          if (masterNode.content === undefined) masterNode.content = defaultVal;
+          specWrap.appendChild(this.ui.createEditFieldRow(label, masterNode.content, (v) => {
+            masterNode.content = v;
+            if (temp.querySelector('[data-tree-view]')) masterNode.label = v || def.label;
             this.syncView();
-          }, (key === 'src' || key === 'href') ? 'input' : 'text');
-          
-          specWrap.appendChild(row);
-        });
+          }, 'text'));
+        } else {
+          if (!masterNode.attrs) masterNode.attrs = {};
+          if (masterNode.attrs[key] === undefined) masterNode.attrs[key] = defaultVal;
+          specWrap.appendChild(this.ui.createEditFieldRow(label, masterNode.attrs[key], (v) => {
+            masterNode.attrs[key] = v;
+            this.syncView();
+          }, 'input'));
+        }
       });
+    });
+
+    // --- B. $data 変数の解析（高度な属性編集） ---
+    // 形式: $data:key:label:type:default[:options]
+    const dataRegex = /\$data:([\w-]+):([^:]+):([\w-]+):([^:">]+)(?::\[([^\]]+)\])?/g;
+    let match;
+    while ((match = dataRegex.exec(def.template)) !== null) {
+      const [_, key, label, type, defaultVal, optionsRaw] = match;
+      if (specWrap.querySelector(`[data-attr-key="${key}"]`)) continue;
+
+      if (!masterNode.attrs) masterNode.attrs = {};
+      if (masterNode.attrs[key] === undefined) masterNode.attrs[key] = defaultVal;
+
+      // オプション文字列をパースして [{label, value}] の配列にする
+      const options = optionsRaw ? optionsRaw.split(',').map(pair => {
+        const [l, v] = pair.split(':');
+        return { label: l.trim(), value: (v || l).trim() };
+      }) : [];
+
+      const field = this.createAdvancedField(label, key, type, masterNode.attrs[key], options, (newVal) => {
+        masterNode.attrs[key] = newVal;
+        this.syncView();
+      });
+      field.setAttribute('data-attr-key', key);
+      specWrap.appendChild(field);
     }
 
-    // スタイル編集（既存の処理を維持）
+    // --- C. スタイル編集（既存通り） ---
     const targetDom = document.querySelector(`[${this.ctx.CONFIG.ATTRIBUTES.TREE_ID}="${node.id}"]`);
     if (targetDom) {
-      const styleStr = targetDom.getAttribute('style') || "";
-      const pref = masterNode.type?.startsWith('m-') ? "module" : "layout";
       const propsList = panelBase.querySelector('#active-props-list');
+      const pref = masterNode.type?.startsWith('m-') ? "module" : "layout";
       this.ctx.STYLE_DEFS.forEach(sDef => {
         const regex = new RegExp(`--${pref}-${sDef.prop}\\s*:\\s*([^;]+)`);
-        const match = styleStr.match(regex);
-        if (match) this.addPropInput(sDef, propsList, node.id, match[1].trim());
+        const m = (targetDom.getAttribute('style') || "").match(regex);
+        if (m) this.addPropInput(sDef, propsList, node.id, m[1].trim());
       });
       panelBase.querySelector('#prop-selector').onchange = (e) => {
         if (!e.target.value) return;
@@ -509,6 +438,62 @@ export class WebModuleBuilder {
         e.target.value = "";
       };
     }
+  }
+
+  /**
+   * 各種UIパーツ生成ヘルパー
+   */
+  createAdvancedField(label, key, type, currentVal, options, onChange) {
+    const row = document.createElement('div');
+    row.className = 'edit-field-row';
+    const labelEl = document.createElement('label');
+    labelEl.textContent = label;
+    row.appendChild(labelEl);
+
+    const wrap = document.createElement('div');
+    wrap.className = 'field-input-wrap';
+
+    if (type === 'radio') {
+      options.forEach(opt => {
+        const l = document.createElement('label');
+        l.className = 'radio-label';
+        const r = document.createElement('input');
+        r.type = 'radio';
+        r.name = `radio-${key}-${Math.random().toString(36).slice(2, 7)}`;
+        r.value = opt.value;
+        r.checked = (String(opt.value) === String(currentVal));
+        r.onchange = () => onChange(opt.value);
+        l.appendChild(r);
+        l.append(opt.label);
+        wrap.appendChild(l);
+      });
+    } else if (type === 'checkbox') {
+      // checkboxの場合、options[0]がチェック時、options[1]が未チェック時のラベルと値
+      const onData = options[0] || { label: "ON", value: "true" };
+      const offData = options[1] || { label: "OFF", value: "false" };
+
+      const l = document.createElement('label');
+      l.className = 'checkbox-label';
+      const c = document.createElement('input');
+      c.type = 'checkbox';
+      c.checked = (String(currentVal) === String(onData.value));
+      c.onchange = (e) => onChange(e.target.checked ? onData.value : offData.value);
+      l.appendChild(c);
+      l.append(currentVal === onData.value ? onData.label : offData.label);
+      
+      // 文字列をクリックでも切り替わるように
+      wrap.appendChild(l);
+    } else {
+      // text, number, textarea (省略)
+      const i = document.createElement(type === 'textarea' ? 'textarea' : 'input');
+      if (type !== 'textarea') i.type = type;
+      i.value = currentVal;
+      i.oninput = (e) => onChange(e.target.value);
+      wrap.appendChild(i);
+    }
+
+    row.appendChild(wrap);
+    return row;
   }
   // ---------------------------------------------------------------
 

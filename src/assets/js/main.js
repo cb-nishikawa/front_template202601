@@ -55,7 +55,18 @@ export const ELEMENT_DEFS = {
   // グリッドやリストなどのコンテナ系はそのまま
   'l-gridContents01': {
     label: 'グリッドセット', tag: 'div', 
-    template: `<$tag data-module="l-gridContents01"><div class="wrapper"><div class="inner"><div class="block contents" data-drop-zone="グリッド"></div></div></div></$tag>`.trim()
+    template: `
+     <$tag data-module="l-gridContents01" 
+          data-grid="$data:grid:列数:text:3" 
+          data-type="$data:type:種類:radio:standard:[標準:standard,ワイド:wide,フル:full]"
+          data-show="$data:show:表示設定:checkbox:show:[表示する:show,非表示にする:hide]">
+        <div class="wrapper">
+          <div class="inner">
+            <div class="block contents" data-drop-zone="グリッド">
+            </div>
+          </div>
+        </div>
+      </$tag>`.trim()
   },
   'm-uList01': {
     label: 'リストセット', tag: 'ul', 
