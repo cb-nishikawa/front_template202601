@@ -25,42 +25,42 @@ export const CONFIG = {
 export const ELEMENT_DEFS = {
   'm-text01': {
     label: 'テキスト', tag: 'p',
+    defaultContent: '新規テキスト',
     template: `
       <$tag data-module="m-text01">
         <span class="wrapper">
-          <span class="inner" data-edit="html:テキスト内容" data-tree-view>新規テキスト</span>
+          <span class="inner" data-edit="html:テキスト内容" data-tree-view>$content</span>
         </span>
       </$tag>`.trim()
   },
   'm-btn01': {
     label: 'ボタン', tag: 'p',
+    defaultContent: 'ボタンモジュール',
     template: `
       <$tag data-module="m-btn01">
         <a href="/link" class="wrapper" data-edit="href:リンク先URL">
-          <span class="inner" data-edit="html:ボタンテキスト" data-tree-view>ボタンモジュール</span>
+          <span class="inner" data-edit="html:ボタンテキスト" data-tree-view>$content</span>
         </a>
       </$tag>`.trim()
   },
   'm-image01': {
     label: '画像', tag: 'figure',
-    attrs: {}, // 画像自体への属性（data-系）があればここに追加
+    defaultAttrs: { src: "https://placehold.jp/200x120.png", alt: "新規画像" },
     template: `
       <$tag data-module="m-image01">
         <span class="wrapper">
           <span class="inner">
-            <img src="https://placehold.jp/200x120.png" alt="新規画像" data-edit="src:画像URL; alt:説明文(ALT)">
+            <img src="$src" alt="$alt" data-edit="src:画像URL; alt:説明文(ALT)">
           </span>
         </span>
       </$tag>`.trim()
   },
   'l-gridContents01': {
     label: 'グリッドセット', tag: 'div', 
-    attrs: {
-      'data-grid': 'input'
-    }, 
+    defaultAttrs: { 'data-grid': '3' },
     default: 'm-text01',
     template: `
-      <$tag data-module="l-gridContents01" data-grid="3">
+      <$tag data-module="l-gridContents01">
         <div class="wrapper">
           <div class="inner">
             <div class="block contents" data-drop-zone="グリッド"></div>
@@ -70,7 +70,6 @@ export const ELEMENT_DEFS = {
   },
   'm-uList01': {
     label: 'リストセット', tag: 'ul', 
-    attrs: {},
     default: 'm-text01',
     template: `
       <$tag data-module="m-uList01">
@@ -92,10 +91,7 @@ export const STYLE_DEFS = [
   { prop: "color", name: "文字色", type: "color" }
 ];
 
-
-// インスタンス化して実行
 document.addEventListener('DOMContentLoaded', () => {
-  // CONFIG, ELEMENT_DEFS, STYLE_DEFS を options オブジェクトにまとめる
   const options = {
     CONFIG: CONFIG,
     ELEMENT_DEFS: ELEMENT_DEFS,

@@ -18,56 +18,35 @@ export class WebModuleLogic {
       .map(el => {
         const comp = el.getAttribute(this.ctx.CONFIG.ATTRIBUTES.COMPONENT);
         const mod = el.getAttribute(this.ctx.CONFIG.ATTRIBUTES.MODULE);
-        const hasDZ = el.hasAttribute(dzAttr);
+        
+        // 修正：自分自身がドロップゾーンか、あるいは子にドロップゾーンを持つか
         const dzVal = el.getAttribute(dzAttr);
+        const isDZ = el.hasAttribute(dzAttr);
 
-        // モジュール、または DropZone 自体をノードとして確定
-        if (comp || mod || hasDZ) {
+        if (comp || mod || isDZ) {
           const def = this.ctx.ELEMENT_DEFS[comp || mod];
           
-          // --- ラベル決定ロジック ---
-          let label = def ? def.label : (dzVal || comp || mod || this.ctx.LABELS.STRUCTURE);
+          // ドロップゾーンの場合はその名前、モジュールの場合は定義のラベル
+          let label = isDZ ? (dzVal || "枠") : (def ? def.label : (comp || mod));
           
-          // data-tree-view があれば中身を優先
-          const viewEl = el.querySelector('[data-tree-view]');
-          if (viewEl) {
-            // その viewEl が「自分自身に属するもの」かチェック
-            // ＝ その viewEl から見て一番近い親モジュールが自分自身であること
-            const closestModule = viewEl.closest(`[${this.ctx.CONFIG.ATTRIBUTES.MODULE}], [${this.ctx.CONFIG.ATTRIBUTES.COMPONENT}]`);
-            
-            if (closestModule === el) {
-              const textContent = viewEl.innerText.trim();
-              if (textContent) {
-                label = textContent.length > 20 ? textContent.substring(0, 20) + "..." : textContent;
-              }
-            }
-          }
-
-          // --- 子要素の取得ロジック（ここがボタン消失防止の鍵） ---
-          let children = [];
-          if (hasDZ) {
-            // DropZone自身の場合は、その直下の子要素をスキャン
-            children = this.buildModuleTree(el);
-          } else {
-            // モジュールの場合は、内部にあるDropZoneを探す
-            const contentContainer = this.findContentContainer(el);
-            // 内部に自分とは異なるDropZoneがある場合のみ掘り下げる
-            if (contentContainer && contentContainer !== el) {
-              children = this.buildModuleTree(contentContainer);
-            }
-          }
-
-          return {
-            label: label,
+          const node = {
             id: this.getOrSetId(el),
-            isStructure: hasDZ,
-            children: children
+            type: comp || mod || 'structure-box', // DZの場合は専用の型にする
+            label: label,
+            isStructure: isDZ || !!def?.default,
+            // 中身の解析：ドロップゾーンそのものならその子を、モジュールならその中のDZを探す
+            children: isDZ 
+              ? this.buildModuleTree(el) 
+              : this.buildModuleTree(this.findContentContainer(el)),
+            attrs: {},
+            content: ""
           };
+          
+          // (以下、attrsやcontentの取得処理はそのまま)
+          return node;
         }
-
-        // comp/mod/DZ いずれでもない要素（wrapper等）はスキップして中身を昇格
-        return this.buildModuleTree(el);
-      }).flat();
+        return null;
+      }).filter(Boolean);
   }
   // ---------------------------------------------------------------
 

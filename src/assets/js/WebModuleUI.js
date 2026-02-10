@@ -78,9 +78,11 @@ export class WebModuleUI {
 
     const select = this.parseHtml(html);
     select.onchange = (e) => {
-      if (!e.target.value) return;
-      this.builder.addNewModule(node, e.target.value);
-      e.target.value = "";
+      const defId = e.target.value;
+      if (!defId) return;
+      // builder（WebModuleBuilder）の addModule を呼び出す
+      this.builder.addModule(defId, node ? node.id : null);
+      e.target.value = ""; // 選択をリセット
     };
     return select;
   }
@@ -95,24 +97,15 @@ export class WebModuleUI {
    */
   // ---------------------------------------------------------------
   createBlockAddBtn(node) {
-    const targetDZ = node.children.find(c => c.isStructure);
-    if (!targetDZ) return document.createDocumentFragment();
-
     const html = `
       <div class="tree-block-add-wrap">
-        <button type="button" class="blockAddBtn">+ ${this.escapeHtml(targetDZ.label)}を追加</button>
-      </div>`.trim();
-
-    const wrap = this.parseHtml(html);
-    wrap.dataset.blockAddContainer = node.id;
-    const btn = wrap.querySelector('button');
-    btn.setAttribute('data-tree-ignore', '');
-
-    btn.onclick = (e) => {
-      e.stopPropagation();
-      this.builder.fastAddFrame(node);
+        <button type="button" class="blockAddBtn">+ ${node.label}を追加</button>
+      </div>`;
+    const btnWrap = this.parseHtml(html);
+    btnWrap.querySelector('button').onclick = () => {
+      this.builder.fastAddFrame(node); // Builderのデータ操作版を呼ぶ
     };
-    return wrap;
+    return btnWrap;
   }
   // ---------------------------------------------------------------
 
