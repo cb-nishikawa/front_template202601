@@ -9,59 +9,107 @@ export const createWebModuleBuilder = (options) => {
     isUndoing: false
   };
 
+  // ===================================================
+  // 1. 内部ユーティリティ (低レイヤー操作)
+  // ===================================================
+
   /**
-   * コンテンツを格納すべき実際のDOM要素を探す
-   * (wrapper/inner構造を考慮して、実際に要素が追加される場所を特定する)
+   * コンテンツを格納すべき実際のDOM要素を特定する
    */
   const findContentContainer = (el) => {
-    if (el.hasAttribute('data-drop-zone')) return el;
-    return el.querySelector(':scope > .wrapper > .inner') || el.querySelector(':scope > .inner') || el;
+    const dzAttr = ctx.CONFIG.ATTRIBUTES.DROP_ZONE;
+    if (!el) return null;
+
+    // 1) 自分が枠(DropZone)なら、それ自身がコンテンツ領域
+    if (el.hasAttribute(dzAttr)) return el;
+
+    // 2) 自分の直下に枠があるなら、自分が「枠の親コンテナ」
+    if (el.querySelector(`:scope > [${dzAttr}]`)) return el;
+
+    // 3) 子孫を上から探し「直下に枠を持つ最初の要素」を返す
+    const queue = Array.from(el.children);
+    while (queue.length) {
+      const node = queue.shift();
+      if (node.querySelector(`:scope > [${dzAttr}]`)) return node;
+      queue.push(...node.children);
+    }
+
+    // 4) 見つからなければ自分（保険）
+    return el;
   };
 
   /**
-   * 要素に一意のID(treeId)を付与、または既存のIDを取得する
-   * (ツリー表示と実DOMを紐付けるための鍵となる)
+   * DOM要素に一意のTreeIDを付与、または取得する
    */
   const getOrSetId = (el) => {
     if (!el.dataset.treeId) el.dataset.treeId = "id-" + Math.random().toString(36).slice(2, 11);
     return el.dataset.treeId;
   };
 
+  // ===================================================
+  // 2. システム司令塔 (syncView)
+  // ===================================================
+
   /**
-   * 実DOMから「編集用ツリーデータ(JSON)」を再帰的に生成する
-   * (現在のプレビュー画面の構造を読み取って、左側のツリー表示用データを作る)
+   * プレビュー(実DOM)とツリー(UI)の状態を同期させる
+   * @param {Array|null} treeData - 指定があればそのデータで描画、なければ実DOMから解析
    */
-  
+  const syncView = (treeData = null) => {
+    const previewRoot = document.querySelector(ctx.CONFIG.SELECTORS.CONTAINER_INNER);
+    if (!previewRoot) return;
+
+    // A. データの確定 (外部データがなければ現在のDOMを解析)
+    const currentTree = treeData || buildModuleTree(previewRoot);
+
+    // B. 履歴の保存 (引数がない＝新規のユーザー操作時のみ保存)
+    if (!treeData) {
+      state.historyStack.push(JSON.parse(JSON.stringify(currentTree)));
+      if (state.historyStack.length > ctx.CONFIG.MAX_HISTORY) state.historyStack.shift();
+    }
+
+    // C. ツリーUIの再描画
+    const displayInner = document.querySelector(ctx.CONFIG.SELECTORS.TREE_DISPLAY_INNER);
+    if (displayInner) {
+      displayInner.innerHTML = "";
+      // ルート階層用のモジュール追加ボタンを配置
+      displayInner.appendChild(createAddRow(null, true, ctx));
+      renderTree(currentTree, displayInner, ctx);
+    }
+  };
+
+  // ===================================================
+  // 3. データ解析・描画ロジック
+  // ===================================================
+
+  /**
+   * 実DOMを再帰的に走査し、ツリー構造(JSON)に変換する
+   */
   const buildModuleTree = (root) => {
     if (!root) return [];
-    const dropZoneAttr = ctx.CONFIG.ATTRIBUTES.DROP_ZONE; 
+    const dzAttr = ctx.CONFIG.ATTRIBUTES.DROP_ZONE;
 
     return Array.from(root.children)
       .filter(el => !el.closest(ctx.CONFIG.SELECTORS.EXCLUDE_AREAS))
       .map(el => {
         const comp = el.getAttribute(ctx.CONFIG.ATTRIBUTES.COMPONENT);
         const mod = el.getAttribute(ctx.CONFIG.ATTRIBUTES.MODULE);
-        const hasDropZone = el.hasAttribute(dropZoneAttr);
-        const dropZoneVal = el.getAttribute(dropZoneAttr); // 属性の値を取得
+        const hasDZ = el.hasAttribute(dzAttr);
+        const dzVal = el.getAttribute(dzAttr);
 
-        if (comp || mod || hasDropZone) {
+        if (comp || mod || hasDZ) {
           let label = "";
-
           if (comp || mod) {
-            // モジュール/コンポーネントの場合：ELEMENT_DEFS から日本語ラベルを取得
-            const defKey = comp || mod;
-            const definition = ctx.ELEMENT_DEFS[defKey];
-            label = definition ? definition.label : defKey;
-          } else if (hasDropZone) {
-            // 枠（DropZone）の場合：属性に値があればそれを使い、なければ共通ラベル（【s】）
-            label = dropZoneVal || ctx.LABELS.STRUCTURE;
+            const def = ctx.ELEMENT_DEFS[comp || mod];
+            label = def ? def.label : (comp || mod);
+          } else if (hasDZ) {
+            // DropZone属性の値があればそれを、なければデフォルトラベルを使用
+            label = dzVal || ctx.LABELS.STRUCTURE;
           }
 
           return {
             label: label,
             id: getOrSetId(el),
-            // nodeにisStructureフラグを持たせておくとrenderTreeでの判定が楽になります
-            isStructure: hasDropZone,
+            isStructure: hasDZ,
             children: buildModuleTree(findContentContainer(el))
           };
         }
@@ -70,15 +118,306 @@ export const createWebModuleBuilder = (options) => {
   };
 
   /**
-   * ツリーの並び順変更を、実DOM(プレビュー画面)に反映させる
-   * (ドラッグ&ドロップ後の新しい順序に従ってDOM要素を並べ替える)
+   * 解析されたデータを元に、サイドバーのツリーUIを構築する
+   */
+  const escapeHtml = (s = "") =>
+    String(s).replace(/[&<>"']/g, (m) => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+    }[m]));
+
+  const findNodeById = (tree, id) => {
+    for (const n of tree) {
+      if (n.id === id) return n;
+      if (n.children?.length) {
+        const hit = findNodeById(n.children, id);
+        if (hit) return hit;
+      }
+    }
+    return null;
+  };
+
+  const renderTree = (tree, parent, ctx) => {
+    // 1) ツリーをHTML文字列にする（ローカル関数で完結）
+    const toHtml = (node) => {
+      const id = escapeHtml(node.id);
+      return `
+        <li data-id="${id}" class="tree-item">
+          <${node.isStructure ? "p" : "div"}
+            class="parent${node.isStructure ? " no-drag" : ""}"
+            data-row-id="${id}"
+          >
+            ${node.isStructure ? "" : `<span class="drag-handle">≡</span>`}
+            <span class="label-text">${escapeHtml(node.label)}</span>
+            <div class="row-controls">
+              <div class="add-controls" data-add-for="${id}"></div>
+              <div class="manage-controls" data-manage-for="${id}"></div>
+            </div>
+          </${node.isStructure ? "p" : "div"}>
+          <ul class="sortable-list${node.isStructure ? " is-structure-list" : ""}">
+            ${node.children?.map(toHtml).join("") ?? ""}
+          </ul>
+          ${(!node.isStructure && node.children?.some(c => c.isStructure))
+            ? `<div class="tree-fast-add-wrap" data-fastadd-for="${id}"></div>`
+            : ""
+          }
+        </li>
+      `.trim();
+    };
+
+    // 2) ルートのULごと描画
+    parent.insertAdjacentHTML(
+      "beforeend",
+      `<ul class="sortable-list">${tree.map(toHtml).join("")}</ul>`
+    );
+
+    // 3) 各スロットに機能を直接マウント
+    parent.querySelectorAll('.tree-item').forEach((li) => {
+      const id = li.getAttribute('data-id');
+      const node = findNodeById(tree, id);
+      if (!node) return;
+
+      // 追加スロットの設定 (既存ロジック)
+      const addSlot = li.querySelector(`[data-add-for="${id}"]`);
+      if (addSlot) {
+        addSlot.innerHTML = "";
+        const targetDom = document.querySelector(`[${ctx.CONFIG.ATTRIBUTES.TREE_ID}="${node.id}"]`);
+        const containerEl = findContentContainer(targetDom);
+        if (containerEl?.hasAttribute(ctx.CONFIG.ATTRIBUTES.DROP_ZONE)) {
+          addSlot.appendChild(createAddRow(node, false, ctx));
+        }
+      }
+
+      // 管理スロットの設定 (編集と削除を独立して追加)
+      const manageSlot = li.querySelector(`[data-manage-for="${id}"]`);
+      if (manageSlot) {
+        manageSlot.innerHTML = ""; 
+        manageSlot.appendChild(createEditButton(node, ctx));
+        manageSlot.appendChild(createDeleteButton(node, ctx));
+      }
+    });
+
+    // 4) 枠追加ボタンも既存関数で埋める
+    parent.querySelectorAll("[data-fastadd-for]").forEach((slot) => {
+      const id = slot.getAttribute("data-fastadd-for");
+      const node = findNodeById(tree, id);
+      if (!node) return;
+      slot.replaceWith(createFastAddFrameBtn(node, ctx));
+    });
+
+    // 5) hover（イベントデリゲーション）
+    if (!parent.__treeHoverBound) {
+      parent.__treeHoverBound = true;
+
+      parent.addEventListener("mouseover", (e) => {
+        const row = e.target.closest("[data-row-id]");
+        if (!row) return;
+        handleHover(row.getAttribute("data-row-id"), true);
+      });
+
+      parent.addEventListener("mouseout", (e) => {
+        const row = e.target.closest("[data-row-id]");
+        if (!row) return;
+        handleHover(row.getAttribute("data-row-id"), false);
+      });
+    }
+
+    // 6) Sortable を全リストに適用（renderTree再帰はしない設計）
+    parent.querySelectorAll("ul.sortable-list").forEach((ul) => initSortable(ul, ctx));
+  };
+
+
+
+
+
+
+
+
+
+  
+  // ===================================================
+  // 4. アクション生成 (ボタン・選択UI)
+  // ===================================================
+
+  /**
+   * 特定のモジュール内に「空の枠」を素早く増やすボタンを生成
+   */
+  const createFastAddFrameBtn = (node, ctx) => {
+    const targetDZ = node.children.find(c => c.isStructure);
+    if (!targetDZ) return document.createDocumentFragment();
+
+    const wrap = document.createElement("div");
+    wrap.className = "tree-fast-add-wrap"; 
+    const btn = document.createElement("button");
+    btn.className = "tree-fast-add-btn";
+    btn.innerHTML = `+ ${targetDZ.label}を追加`;
+    
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const targetDom = document.querySelector(`[${ctx.CONFIG.ATTRIBUTES.TREE_ID}="${node.id}"]`);
+      if (targetDom) {
+        const currentCount = findContentContainer(targetDom).children.length;
+        updateChildrenCount(targetDom, currentCount + 1, ctx);
+      }
+    };
+    wrap.appendChild(btn);
+    return wrap;
+  };
+
+  /**
+   * モジュールを追加するためのセレクトボックスを生成
+   */
+  const createAddRow = (node, isRoot, ctx) => {
+    const select = document.createElement("select");
+    select.className = "module-add-select";
+    select.innerHTML = `<option value="">＋</option>` + 
+      Object.entries(ctx.ELEMENT_DEFS).map(([key, def]) => `<option value="${key}">${def.label}</option>`).join('');
+    
+    select.onchange = (e) => {
+      const val = e.target.value;
+      if (!val) return;
+      const container = node 
+        ? findContentContainer(document.querySelector(`[${ctx.CONFIG.ATTRIBUTES.TREE_ID}="${node.id}"]`)) 
+        : document.querySelector(ctx.CONFIG.SELECTORS.CONTAINER_INNER);
+      
+      if (container) {
+        const newEl = createFromTemplate(val, ctx);
+        // 先頭に追加
+        node ? container.insertBefore(newEl, container.firstChild) : container.appendChild(newEl);
+        syncView();
+      }
+      e.target.value = "";
+    };
+    return select;
+  };
+
+  /**
+   * 編集ボタンを生成
+   */
+  const createEditButton = (node, ctx) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn-edit";
+    btn.textContent = "⚙";
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      openEditPanel(node, ctx);
+    };
+    return btn;
+  };
+
+  /**
+   * 削除ボタンを生成
+   */
+  const createDeleteButton = (node, ctx) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn-del";
+    btn.textContent = "×";
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const targetDom = document.querySelector(`[${ctx.CONFIG.ATTRIBUTES.TREE_ID}="${node.id}"]`);
+      if (targetDom && confirm("削除しますか？")) {
+        targetDom.remove();
+        syncView();
+      }
+    };
+    return btn;
+  };
+
+
+
+
+
+
+
+
+  
+  // ===================================================
+  // 5. DOM操作・テンプレート生成
+  // ===================================================
+
+  /**
+   * 枠の数を増減させる (グリッドやリスト用)
+   */
+  const updateChildrenCount = (targetDom, count, ctx) => {
+    const dz = findContentContainer(targetDom);
+    const diff = count - dz.children.length;
+    const dzAttr = ctx.CONFIG.ATTRIBUTES.DROP_ZONE;
+
+    if (diff > 0) {
+      const modName = targetDom.getAttribute(ctx.CONFIG.ATTRIBUTES.MODULE);
+      const def = ctx.ELEMENT_DEFS[modName];
+      for (let i = 0; i < diff; i++) {
+        const isList = dz.tagName === 'UL';
+        const newChild = document.createElement(isList ? 'li' : 'div');
+        // 既存のDropZoneと同じラベル名を引き継ぐ
+        const originalDZ = dz.querySelector(`[${dzAttr}]`) || dz.firstElementChild;
+        newChild.setAttribute(dzAttr, originalDZ?.getAttribute(dzAttr) || "");
+        newChild.setAttribute(ctx.CONFIG.ATTRIBUTES.TREE_ID, "id-" + Math.random().toString(36).slice(2, 11));
+        if (def?.default) newChild.appendChild(createFromTemplate(def.default, ctx));
+        dz.appendChild(newChild);
+      }
+    } else {
+      for (let i = 0; i < Math.abs(diff); i++) dz.lastElementChild?.remove();
+    }
+    syncView();
+  };
+
+  /**
+   * ELEMENT_DEFSの定義に基づき、実DOM要素を新規生成する
+   */
+  const createFromTemplate = (defId, ctx) => {
+    const def = ctx.ELEMENT_DEFS[defId];
+    const html = def.template.replace(/\$tag/g, def.tag);
+    const temp = document.createElement('div');
+    temp.innerHTML = html.trim();
+    const newEl = temp.firstElementChild;
+    newEl.setAttribute(ctx.CONFIG.ATTRIBUTES.TREE_ID, "id-" + Math.random().toString(36).slice(2, 11));
+    if (def.attrs) def.attrs.forEach(attr => newEl.setAttribute(attr, ""));
+    const dzAttr = ctx.CONFIG.ATTRIBUTES.DROP_ZONE;
+    if (def.default) {
+      const dz = newEl.hasAttribute(dzAttr) ? newEl : newEl.querySelector(`[${dzAttr}]`);
+      if (dz) dz.appendChild(createFromTemplate(def.default, ctx));
+    }
+    return newEl;
+  };
+
+
+
+
+
+
+
+
+  
+  // ===================================================
+  // 6. 並び替えと編集パネル
+  // ===================================================
+
+  /**
+   * ツリーのドラッグ操作結果を、実DOMの並びに適用する
    */
   const applyNewOrder = (order, parentContainer) => {
     if (!order || !parentContainer) return;
-    const container = findContentContainer(parentContainer);
+
+    // ★ここがポイント：ルート階層は “そのまま” 並べ替える
+    const root = document.querySelector(ctx.CONFIG.SELECTORS.CONTAINER_INNER);
+    const container = (root && parentContainer === root)
+      ? parentContainer
+      : findContentContainer(parentContainer);
+
     order.forEach(item => {
-      const targetEl = document.querySelector(`[${ctx.CONFIG.ATTRIBUTES.TREE_ID}="${item.id}"]`);
+      const targetEl = document.querySelector(
+        `[${ctx.CONFIG.ATTRIBUTES.TREE_ID}="${item.id}"]`
+      );
       if (targetEl) {
+        // ★念のため：自分の子孫に自分をappendしない防御（事故止め）
+        if (container && container.contains(targetEl)) {
+          // OK（同じ階層に移動）なのでそのまま
+        }
+        // 逆に、targetEl が container を含むならアウト（循環）
+        if (container && targetEl.contains(container)) return;
+
         container.appendChild(targetEl);
         if (item.children?.length > 0) applyNewOrder(item.children, targetEl);
       }
@@ -86,8 +425,48 @@ export const createWebModuleBuilder = (options) => {
   };
 
   /**
-   * スタイル編集パネルを開く
-   * (選択された要素の現在の設定を読み込み、入力UIを生成して表示する)
+   * 各階層のリストにSortableJSを適用し、ドロップ制限を行う
+   */
+  const initSortable = (ul, ctx) => {
+    new Sortable(ul, {
+      group: {
+        name: 'nested',
+        put: (to) => {
+          if (!to || !to.el) return false;
+          // ルート階層ならドロップ可
+          const isRoot = to.el.parentElement && to.el.parentElement.id === "tree-display-inner";
+          if (isRoot) return true;
+          // ドロップ先の親がDropZone属性を持っていれば許可
+          const targetLi = to.el.closest('li');
+          if (!targetLi) return false;
+          const targetDom = document.querySelector(`[${ctx.CONFIG.ATTRIBUTES.TREE_ID}="${targetLi.getAttribute('data-id')}"]`);
+          return findContentContainer(targetDom)?.hasAttribute(ctx.CONFIG.ATTRIBUTES.DROP_ZONE);
+        }
+      },
+      animation: 150,
+      handle: '.drag-handle',
+      fallbackOnBody: true,
+      swapThreshold: 0.65,
+      filter: '.no-drag, input, select, button, .module-add-select',
+      preventOnFilter: false,
+      onEnd: () => {
+        const displayInner = document.querySelector(ctx.CONFIG.SELECTORS.TREE_DISPLAY_INNER);
+        const rootUl = displayInner?.querySelector(':scope > ul');
+        if (!rootUl) return;
+
+        const getOrder = (currUl) => Array.from(currUl.children).map(li => ({
+          id: li.getAttribute('data-id'),
+          children: li.querySelector(':scope > ul') ? getOrder(li.querySelector(':scope > ul')) : []
+        }));
+        
+        applyNewOrder(getOrder(rootUl), document.querySelector(ctx.CONFIG.SELECTORS.CONTAINER_INNER));
+        syncView(); 
+      }
+    });
+  };
+
+  /**
+   * CSSカスタムプロパティやテキスト内容を編集するパネルを開く
    */
   const openEditPanel = (node, ctx) => {
     const targetDom = document.querySelector(`[${ctx.CONFIG.ATTRIBUTES.TREE_ID}="${node.id}"]`);
@@ -99,6 +478,7 @@ export const createWebModuleBuilder = (options) => {
     const container = document.querySelector(ctx.CONFIG.SELECTORS.STYLE_PANEL_INNER);
     if (!container) return;
 
+    // 現在のスタイル解析
     const styleStr = targetDom.getAttribute('style') || "";
     const currentStyles = {};
     ctx.STYLE_DEFS.forEach(s => {
@@ -107,8 +487,6 @@ export const createWebModuleBuilder = (options) => {
       if (match) currentStyles[s.prop] = match[1].trim();
     });
 
-    const modId = targetDom.getAttribute(ctx.CONFIG.ATTRIBUTES.MODULE) || targetDom.getAttribute(ctx.CONFIG.ATTRIBUTES.COMPONENT);
-    
     container.innerHTML = `
       <h3 class="panel-title">${node.label}</h3>
       <div id="content-specific-editor"></div>
@@ -122,7 +500,6 @@ export const createWebModuleBuilder = (options) => {
     `;
 
     const propsList = document.getElementById('active-props-list');
-    
     Object.entries(currentStyles).forEach(([prop, val]) => {
       const sDef = ctx.STYLE_DEFS.find(s => s.prop === prop);
       if (sDef) addPropInput(sDef, propsList, node.id, val);
@@ -134,6 +511,7 @@ export const createWebModuleBuilder = (options) => {
       e.target.value = "";
     };
 
+    // data-edit属性に基づく簡易テキスト編集
     const specWrap = document.getElementById('content-specific-editor');
     targetDom.querySelectorAll('[data-edit]').forEach(el => {
       el.getAttribute('data-edit').split(';').forEach(conf => {
@@ -143,10 +521,9 @@ export const createWebModuleBuilder = (options) => {
         let val = (type === 'src' || type === 'alt') ? el.getAttribute(type) : el.innerHTML;
         row.innerHTML = `<label>${label}</label><textarea>${val || ''}</textarea>`;
         row.querySelector('textarea').oninput = (e) => {
-          const v = e.target.value;
-          if (type === 'src' || type === 'alt') el.setAttribute(type, v);
-          else el.innerHTML = v;
-          saveHistoryAndRefresh();
+          if (type === 'src' || type === 'alt') el.setAttribute(type, e.target.value);
+          else el.innerHTML = e.target.value;
+          syncView(); 
         };
         specWrap.appendChild(row);
       });
@@ -154,13 +531,13 @@ export const createWebModuleBuilder = (options) => {
   };
 
   /**
-   * 個別のスタイル入力項目(数値や色)を編集パネル内に追加する
+   * 個別のスタイル入力項目(数値/色)を追加
    */
   const addPropInput = (item, parent, targetId, fullVal = "") => {
     if (parent.querySelector(`[data-p="${item.prop}"]`)) return;
     const div = document.createElement("div");
     div.setAttribute('data-p', item.prop);
-    div.className = "prop-input-item"; // スタイルはCSSへ
+    div.className = "prop-input-item";
 
     let numVal = "", unitVal = "px";
     if (fullVal) {
@@ -179,6 +556,8 @@ export const createWebModuleBuilder = (options) => {
     `;
 
     const update = () => {
+      const el = document.querySelector(`[${ctx.CONFIG.ATTRIBUTES.TREE_ID}="${targetId}"]`);
+      if (!el) return;
       let val = "";
       if (item.type === 'color') val = div.querySelector('input').value;
       else {
@@ -186,298 +565,66 @@ export const createWebModuleBuilder = (options) => {
         const u = div.querySelector('.u-in').value;
         val = (u === 'auto') ? 'auto' : (n !== "" ? n + u : "");
       }
-      const el = document.querySelector(`[${ctx.CONFIG.ATTRIBUTES.TREE_ID}="${targetId}"]`);
-      if (el) {
-        const pref = el.getAttribute(ctx.CONFIG.ATTRIBUTES.MODULE)?.startsWith('m-') ? "module" : "layout";
-        el.style.setProperty(`--${pref}-${item.prop}`, val);
-        saveHistoryAndRefresh();
-      }
+      const modAttr = el.getAttribute(ctx.CONFIG.ATTRIBUTES.MODULE) || "";
+      const pref = modAttr.startsWith('m-') ? "module" : "layout";
+      el.style.setProperty(`--${pref}-${item.prop}`, val);
+      syncView();
     };
 
     div.querySelectorAll('input, select').forEach(el => el.oninput = update);
     div.querySelector('.del-p').onclick = () => {
       const el = document.querySelector(`[${ctx.CONFIG.ATTRIBUTES.TREE_ID}="${targetId}"]`);
       if (el) {
-        const pref = el.getAttribute(ctx.CONFIG.ATTRIBUTES.MODULE)?.startsWith('m-') ? "module" : "layout";
+        const modAttr = el.getAttribute(ctx.CONFIG.ATTRIBUTES.MODULE) || "";
+        const pref = modAttr.startsWith('m-') ? "module" : "layout";
         el.style.removeProperty(`--${pref}-${item.prop}`);
       }
       div.remove();
-      saveHistoryAndRefresh();
+      syncView();
     };
     parent.appendChild(div);
   };
 
   /**
-   * 左側のツリー表示を最新の状態に更新(全描き直し)する
-   */
-  const refreshTreeDisplay = (treeData) => {
-    const display = document.querySelector(ctx.CONFIG.SELECTORS.TREE_DISPLAY_INNER);
-    if (!display) return;
-    display.innerHTML = "";
-    display.appendChild(createAddRow(null, true, ctx)); // ルート用の追加ボタン
-    const tree = treeData || buildModuleTree(document.querySelector(ctx.CONFIG.SELECTORS.CONTAINER_INNER));
-    renderTree(tree, display, ctx);
-  };
-
-  /**
-   * ツリー構造を再帰的にDOM(HTML)として描画する
-   */
-  const renderTree = (tree, parent, ctx) => {
-    const ul = document.createElement("ul");
-    ul.className = 'sortable-list';
-    
-    // ... (isParentStructureの判定ロジックはそのまま)
-
-    tree.forEach(node => {
-      const li = document.createElement("li");
-      li.setAttribute('data-id', node.id);
-      li.className = 'tree-item';
-
-      // node.isStructure を直接参照
-      const row = document.createElement(node.isStructure ? "p" : "div");
-      row.className = "parent" + (node.isStructure ? " no-drag" : "");
-      
-      // buildModuleTree で確定した label を表示
-      row.innerHTML = `${!node.isStructure ? '<span class="drag-handle">≡</span>' : ''}<span class="label-text">${node.label}</span>`;
-      
-      appendActionButtons(row, node, ctx);
-      li.appendChild(row);
-      renderTree(node.children || [], li, ctx);
-
-      // 枠追加ボタンの条件：自分自身が枠ではなく、かつ子要素に枠を持っている場合
-      const hasStructureChild = node.children && node.children.some(child => child.isStructure);
-
-      if (!node.isStructure && hasStructureChild) {
-        li.appendChild(createFastAddFrameBtn(node, ctx));
-      }
-
-      row.onmouseenter = () => handleHover(node.id, true);
-      row.onmouseleave = () => handleHover(node.id, false);
-      ul.appendChild(li);
-    });
-    
-    parent.appendChild(ul);
-    initSortable(ul, ctx);
-  };
-
-  /**
-   * レイアウト等の中身に、新しい「空の枠(structure)」を素早く追加するボタンを作る
-   */
-  const createFastAddFrameBtn = (node, ctx) => {
-    // 子要素の中から、最初に定義されている DropZone (isStructure) を探す
-    const targetStructure = node.children.find(child => child.isStructure);
-    if (!targetStructure) return document.createDocumentFragment();
-
-    const wrap = document.createElement("div");
-    wrap.className = "tree-fast-add-wrap"; 
-    const btn = document.createElement("button");
-    btn.className = "tree-fast-add-btn";
-    
-    // DropZone 自体が持っているラベル（「グリッド」や「リスト」）を使用
-    btn.innerHTML = `+ ${targetStructure.label}を追加`;
-    
-    btn.onclick = (e) => {
-      e.stopPropagation();
-      const targetDom = document.querySelector(`[${ctx.CONFIG.ATTRIBUTES.TREE_ID}="${node.id}"]`);
-      if (targetDom) {
-        // 現在の「器（inner）」の中にある子要素の数 + 1 に更新する
-        const container = findContentContainer(targetDom);
-        updateChildrenCount(targetDom, container.children.length + 1, ctx);
-      }
-    };
-    
-    wrap.appendChild(btn);
-    return wrap;
-  };
-
-  /**
-   * ツリーの各行に「設定(⚙)」や「削除(×)」などの操作ボタンを追加する
-   */
-  const appendActionButtons = (container, node, ctx) => {
-    const wrap = document.createElement("div");
-    wrap.className = "action-buttons";
-
-    // 名前ではなく、実DOMの状態を確認
-    const targetDom = document.querySelector(`[${ctx.CONFIG.ATTRIBUTES.TREE_ID}="${node.id}"]`);
-    const containerEl = findContentContainer(targetDom);
-    
-    // 器が data-drop-zone 属性を持っていれば、追加ボタンを許可
-    if (containerEl && containerEl.hasAttribute('data-drop-zone')) {
-      wrap.appendChild(createAddRow(node, false, ctx));
-    }
-
-    const editBtn = document.createElement("button");
-    editBtn.innerHTML = "⚙";
-    editBtn.onclick = (e) => { e.stopPropagation(); openEditPanel(node, ctx); };
-
-    const delBtn = document.createElement("button");
-    delBtn.innerHTML = "×";
-    delBtn.onclick = (e) => {
-      e.stopPropagation();
-      if (targetDom && confirm("削除しますか？")) { targetDom.remove(); saveHistoryAndRefresh(); }
-    };
-    wrap.append(editBtn, delBtn);
-    container.appendChild(wrap);
-  };
-
-  /**
-   * モジュールを選択して新規追加するためのセレクトボックスを作る
-   */
-  const createAddRow = (node, isRoot, ctx) => {
-    const select = document.createElement("select");
-    select.className = "module-add-select";
-    select.innerHTML = `<option value="">＋</option>` + 
-      Object.entries(ctx.ELEMENT_DEFS).map(([key, def]) => `<option value="${key}">${def.label}</option>`).join('');
-    select.onchange = (e) => {
-      const val = e.target.value;
-      if (!val) return;
-      const container = node ? findContentContainer(document.querySelector(`[${ctx.CONFIG.ATTRIBUTES.TREE_ID}="${node.id}"]`)) : document.querySelector(ctx.CONFIG.SELECTORS.CONTAINER_INNER);
-      if (container) {
-        const newEl = createFromTemplate(val, ctx);
-        node ? container.insertBefore(newEl, container.firstChild) : container.appendChild(newEl);
-        saveHistoryAndRefresh();
-      }
-      e.target.value = "";
-    };
-    return select;
-  };
-
-  /**
-   * ELEMENT_DEFSの設定(テンプレート)に基づいて、実際のDOM要素を生成する
-   */
-  const createFromTemplate = (defId, ctx) => {
-    const def = ctx.ELEMENT_DEFS[defId];
-    const html = def.template.replace(/\$tag/g, def.tag);
-    const temp = document.createElement('div');
-    temp.innerHTML = html.trim();
-    const newEl = temp.firstElementChild;
-    newEl.setAttribute(ctx.CONFIG.ATTRIBUTES.TREE_ID, "id-" + Math.random().toString(36).slice(2, 11));
-    if (def.attrs) def.attrs.forEach(attr => newEl.setAttribute(attr, ""));
-    if (def.default) {
-      const dz = newEl.hasAttribute('data-drop-zone') ? newEl : newEl.querySelector('[data-drop-zone]');
-      if (dz) dz.appendChild(createFromTemplate(def.default, ctx));
-    }
-    return newEl;
-  };
-
-  /**
-   * 子要素(枠など)の数を、指定した数に合わせて増減させる
-   */
-  const updateChildrenCount = (targetDom, count, ctx) => {
-    const dz = findContentContainer(targetDom);
-    const diff = count - dz.children.length; // ここで現在の数と比較
-    const dropZoneAttr = ctx.CONFIG.ATTRIBUTES.DROP_ZONE;
-
-    if (diff > 0) {
-      // 自分のモジュール名（l-gridContents01など）を取得
-      const modName = targetDom.getAttribute(ctx.CONFIG.ATTRIBUTES.MODULE);
-      const def = ctx.ELEMENT_DEFS[modName];
-
-      for (let i = 0; i < diff; i++) {
-        const isList = dz.tagName === 'UL';
-        const newChild = document.createElement(isList ? 'li' : 'div');
-        
-        // ★重要：元々のDropZoneが持っていた「名前（属性値）」を引き継ぐ
-        const originalDZ = dz.querySelector(`[${dropZoneAttr}]`) || dz.firstElementChild;
-        const dzLabel = originalDZ?.getAttribute(dropZoneAttr) || "";
-        
-        newChild.setAttribute(dropZoneAttr, dzLabel); // ここで「グリッド」等の名前を維持
-        newChild.setAttribute(ctx.CONFIG.ATTRIBUTES.TREE_ID, "id-" + Math.random().toString(36).slice(2, 11));
-        
-        if (def?.default) newChild.appendChild(createFromTemplate(def.default, ctx));
-        dz.appendChild(newChild);
-      }
-    } else {
-      for (let i = 0; i < Math.abs(diff); i++) dz.lastElementChild?.remove();
-    }
-    saveHistoryAndRefresh();
-  };
-
-  /**
-   * SortableJSを初期化し、ドラッグ&ドロップの挙動を制御する
-   */
-  const initSortable = (ul, ctx) => {
-    new Sortable(ul, {
-      group: {
-        name: 'nested',
-        put: (to) => {
-          if (!to || !to.el) return false;
-
-          // ルート（一番上の階層）なら常にOK
-          const isRootList = to.el.parentElement && to.el.parentElement.id === "tree-display-inner";
-          if (isRootList) return true;
-
-          // ネストしようとしている先の親要素(li)を取得
-          const targetLi = to.el.closest('li');
-          if (!targetLi) return false;
-
-          const targetId = targetLi.getAttribute('data-id');
-          const targetDom = document.querySelector(`[${ctx.CONFIG.ATTRIBUTES.TREE_ID}="${targetId}"]`);
-          if (!targetDom) return false;
-
-          // ★ここがポイント：
-          // 「自分自身」または「直下の器(findContentContainer)」が [data-drop-zone] を持っているか？
-          // これだけで、階層構造を壊さずにドロップだけを制限できます。
-          const container = findContentContainer(targetDom);
-          return container && container.hasAttribute('data-drop-zone');
-        }
-      },
-      animation: 150,
-      handle: '.drag-handle',
-      fallbackOnBody: true,
-      swapThreshold: 0.65,
-      filter: '.no-drag, input, select, button, .module-add-select', // クラス名を明示的に追加
-      preventOnFilter: false, // これを false にすると、フィルター対象へのクリックが通るようになります
-      onEnd: () => {
-        const displayInner = document.querySelector(ctx.CONFIG.SELECTORS.TREE_DISPLAY_INNER);
-        const rootUl = displayInner ? displayInner.querySelector(':scope > ul') : null;
-        if (!rootUl) return;
-
-        const getOrder = (currUl) => Array.from(currUl.children)
-          .filter(li => li.hasAttribute('data-id'))
-          .map(li => ({
-            id: li.getAttribute('data-id'),
-            children: li.querySelector(':scope > ul') ? getOrder(li.querySelector(':scope > ul')) : []
-          }));
-          
-        applyNewOrder(getOrder(rootUl), document.querySelector(ctx.CONFIG.SELECTORS.CONTAINER_INNER));
-        saveHistoryAndRefresh();
-      }
-    });
-  };
-
-  /**
-   * 現在の状態を履歴(スタック)に保存し、表示をリフレッシュする
-   */
-  const saveHistoryAndRefresh = () => {
-    const tree = buildModuleTree(document.querySelector(ctx.CONFIG.SELECTORS.CONTAINER_INNER));
-    state.historyStack.push(JSON.parse(JSON.stringify(tree)));
-    if (state.historyStack.length > ctx.CONFIG.MAX_HISTORY) state.historyStack.shift();
-    refreshTreeDisplay(tree);
-  };
-
-  /**
-   * ツリー上でホバーした要素に対応する実DOMを強調表示(半透明化など)する
+   * ホバー時の強調表示制御
    */
   const handleHover = (id, active) => {
-    const el = document.querySelector(`[${ctx.CONFIG.ATTRIBUTES.TREE_ID}="${id}"]`);
-    if (el) el.style.setProperty('--tree-hover', active ? '0.7' : '1.0');
+    const el = document.querySelector(
+      `[${ctx.CONFIG.ATTRIBUTES.TREE_ID}="${id}"]`
+    );
+    if (!el) return;
+
+    if (active) {
+      el.setAttribute('data-tree-hover', 'true');
+    } else {
+      el.setAttribute('data-tree-hover', 'false');
+    }
   };
 
-  /**
-   * ビルダーの初期化(イベント登録など)を行い、外部へ公開するメソッドを返す
-   */
+
+
+
+
+
+
+
+
+  // ===================================================
+  // 7. 公開API
+  // ===================================================
+
   return {
     init: () => {
-      const root = document.querySelector(ctx.CONFIG.SELECTORS.CONTAINER_INNER);
-      if (root) refreshTreeDisplay(buildModuleTree(root));
+      // 初期描画
+      syncView();
+      // ショートカットキー設定 (Ctrl+Z)
       window.addEventListener('keydown', (e) => {
-        if ((e.ctrlKey || e.metaKey) && e.key === 'z' && e.target.tagName !== 'INPUT') {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'z' && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
           if (state.historyStack.length > 1) {
             state.historyStack.pop();
             const prev = state.historyStack[state.historyStack.length - 1];
             applyNewOrder(prev, document.querySelector(ctx.CONFIG.SELECTORS.CONTAINER_INNER));
-            refreshTreeDisplay(prev);
+            syncView(prev);
           }
         }
       });
