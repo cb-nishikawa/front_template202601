@@ -18,31 +18,29 @@ export class WebModuleLogic {
       .map(el => {
         const comp = el.getAttribute(this.ctx.CONFIG.ATTRIBUTES.COMPONENT);
         const mod = el.getAttribute(this.ctx.CONFIG.ATTRIBUTES.MODULE);
-        
-        // 修正：自分自身がドロップゾーンか、あるいは子にドロップゾーンを持つか
-        const dzVal = el.getAttribute(dzAttr);
         const isDZ = el.hasAttribute(dzAttr);
 
         if (comp || mod || isDZ) {
           const def = this.ctx.ELEMENT_DEFS[comp || mod];
           
-          // ドロップゾーンの場合はその名前、モジュールの場合は定義のラベル
-          let label = isDZ ? (dzVal || "枠") : (def ? def.label : (comp || mod));
+          // --- 【修正】ラベル決定ロジック ---
+          let label = def ? def.label : "要素"; 
           
+          // data-tree-view が指定されている子要素があれば、そのテキストをラベルにする
+          const viewEl = el.querySelector('[data-tree-view]');
+          if (viewEl && viewEl.textContent.trim() !== "") {
+            label = viewEl.textContent.trim();
+          } else if (isDZ) {
+            label = el.getAttribute(dzAttr) || "枠";
+          }
+
           const node = {
             id: this.getOrSetId(el),
-            type: comp || mod || 'structure-box', // DZの場合は専用の型にする
+            type: comp || mod || 'structure-box',
             label: label,
-            isStructure: isDZ || !!def?.default,
-            // 中身の解析：ドロップゾーンそのものならその子を、モジュールならその中のDZを探す
-            children: isDZ 
-              ? this.buildModuleTree(el) 
-              : this.buildModuleTree(this.findContentContainer(el)),
-            attrs: {},
-            content: ""
+            isStructure: isDZ || (def && def.template.includes(dzAttr)),
+            children: this.buildModuleTree(this.getDropZoneContainer(el))
           };
-          
-          // (以下、attrsやcontentの取得処理はそのまま)
           return node;
         }
         return null;
@@ -50,6 +48,46 @@ export class WebModuleLogic {
   }
   // ---------------------------------------------------------------
 
+
+
+
+  // WebModuleLogic.js 内の buildModuleTree メソッド周辺
+  extractContent(el) {
+    // 編集対象の要素を探す
+    const target = el.hasAttribute('data-edit') ? el : el.querySelector('[data-edit]');
+    if (!target) return undefined;
+
+    const editConfig = target.getAttribute('data-edit');
+    if (editConfig.includes('html:')) {
+      const text = target.innerHTML.trim();
+      // 【重要】もし中身が "$html" という文字列そのものなら、それはデータではないので無視する
+      if (text === '$html' || text === '') return undefined; 
+      return text;
+    }
+    return undefined;
+  }
+
+  // 属性抽出も同様
+  extractAttrs(el) {
+    const target = el.querySelector('[data-edit]');
+    if (!target) return {};
+
+    const attrs = {};
+    const editConfig = target.getAttribute('data-edit');
+    
+    // 例: "src:画像URL:初期値; alt:名前:初期値"
+    editConfig.split(';').forEach(conf => {
+      const [key] = conf.split(':').map(s => s.trim());
+      if (key !== 'html') {
+        const val = target.getAttribute(key);
+        // 【重要】値が "$src" などの変数名なら取り込まない
+        if (val && !val.startsWith('$')) {
+          attrs[key] = val;
+        }
+      }
+    });
+    return attrs;
+  }
 
 
   /**

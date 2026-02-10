@@ -25,56 +25,41 @@ export const CONFIG = {
 export const ELEMENT_DEFS = {
   'm-text01': {
     label: 'テキスト', tag: 'p',
-    defaultContent: '新規テキスト',
     template: `
       <$tag data-module="m-text01">
         <span class="wrapper">
-          <span class="inner" data-edit="html:テキスト内容" data-tree-view>$content</span>
+          <span class="inner" data-edit="html:テキスト内容:新規テキスト" data-tree-view>$html</span>
         </span>
       </$tag>`.trim()
   },
   'm-btn01': {
     label: 'ボタン', tag: 'p',
-    defaultContent: 'ボタンモジュール',
     template: `
       <$tag data-module="m-btn01">
-        <a href="/link" class="wrapper" data-edit="href:リンク先URL">
-          <span class="inner" data-edit="html:ボタンテキスト" data-tree-view>$content</span>
+        <a href="$href" class="wrapper" data-edit="href:リンク先URL:/link">
+          <span class="inner" data-edit="html:ボタンテキスト:ボタンモジュール" data-tree-view>$html</span>
         </a>
       </$tag>`.trim()
   },
   'm-image01': {
     label: '画像', tag: 'figure',
-    defaultAttrs: { src: "https://placehold.jp/200x120.png", alt: "新規画像" },
     template: `
       <$tag data-module="m-image01">
         <span class="wrapper">
           <span class="inner">
-            <img src="$src" alt="$alt" data-edit="src:画像URL; alt:説明文(ALT)">
+            <img src="$src" alt="$alt" data-edit="src:画像URL:https://placehold.jp/200x120.png; alt:説明文(ALT):新規画像">
           </span>
         </span>
       </$tag>`.trim()
   },
+  // グリッドやリストなどのコンテナ系はそのまま
   'l-gridContents01': {
     label: 'グリッドセット', tag: 'div', 
-    defaultAttrs: { 'data-grid': '3' },
-    default: 'm-text01',
-    template: `
-      <$tag data-module="l-gridContents01">
-        <div class="wrapper">
-          <div class="inner">
-            <div class="block contents" data-drop-zone="グリッド"></div>
-          </div>
-        </div>
-      </$tag>`.trim()
+    template: `<$tag data-module="l-gridContents01"><div class="wrapper"><div class="inner"><div class="block contents" data-drop-zone="グリッド"></div></div></div></$tag>`.trim()
   },
   'm-uList01': {
     label: 'リストセット', tag: 'ul', 
-    default: 'm-text01',
-    template: `
-      <$tag data-module="m-uList01">
-        <li data-drop-zone="リスト"></li>
-      </$tag>`.trim()
+    template: `<$tag data-module="m-uList01"><li data-drop-zone="リスト"></li></$tag>`.trim()
   }
 };
 

@@ -41,22 +41,19 @@ export class WebModuleBuilder {
     const previewRoot = document.querySelector(this.ctx.CONFIG.SELECTORS.CONTAINER_INNER);
     if (!previewRoot) return;
 
-    // treeDataがあれば上書き、なければ現在の this.data を使う
     if (treeData) {
       this.data = JSON.parse(JSON.stringify(treeData));
-    } else if (!this.data) {
-      // データが空なら現在のDOMから一度構築
+    } else if (this.data.length === 0) {
+      // 本当に空の時だけDOMから吸い上げる
       this.data = this.logic.buildModuleTree(previewRoot);
     }
 
-    // プレビューDOMの物理的な全消去と再構成
     previewRoot.innerHTML = "";
     this.data.forEach(node => {
       const el = this.renderNode(node);
       if (el) previewRoot.appendChild(el);
     });
 
-    // サイドバーの再構成
     this.renderSidebar(this.data);
   }
   // ---------------------------------------------------------------
@@ -134,27 +131,17 @@ export class WebModuleBuilder {
    * @returns {Element|DocumentFragment} 生成されたDOM
    */
   renderNode(nodeData, parentDef = null) {
-    // 1. 枠（structure-box）の処理
+    // 1. structure-box（枠）の処理
     if (nodeData.type === 'structure-box') {
       let wrapper;
-      
       if (parentDef) {
-        // 親のテンプレートからドロップゾーン要素の「ひな形」を抽出
         const temp = document.createElement('div');
         temp.innerHTML = parentDef.template;
         const dzTemplate = temp.querySelector(`[${this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE}]`);
-        
-        if (dzTemplate) {
-          // ひな形を複製して「枠」として使う（クラス名や構造を完全に維持）
-          wrapper = dzTemplate.cloneNode(false); // 中身は空で複製
-        }
+        if (dzTemplate) wrapper = dzTemplate.cloneNode(false);
       }
-
-      // もしひな形が見つからない場合のフォールバック
       if (!wrapper) wrapper = document.createElement('div');
-
       wrapper.setAttribute(this.ctx.CONFIG.ATTRIBUTES.TREE_ID, nodeData.id);
-      
       if (nodeData.children) {
         nodeData.children.forEach(child => {
           const childDom = this.renderNode(child);
@@ -164,43 +151,63 @@ export class WebModuleBuilder {
       return wrapper;
     }
 
-    // 2. 通常のモジュールの処理
+    // 2. 通常モジュールの処理
     const def = this.ctx.ELEMENT_DEFS[nodeData.type];
     if (!def) return null;
 
     let html = def.template.replace(/\$tag/g, def.tag);
-    html = html.replace(/\$content/g, nodeData.content || def.defaultContent || "");
+
+    // 【重要：修正ポイント】data-edit の解析を安全に行う
+    const parser = document.createElement('div');
+    parser.innerHTML = html;
+    const editEls = parser.querySelectorAll('[data-edit]');
+    const defaults = {};
+
+    editEls.forEach(el => {
+      el.getAttribute('data-edit').split(';').forEach(conf => {
+        // split(':') ではなく、最初の2つのコロンだけを対象にする
+        const parts = conf.split(':').map(s => s.trim());
+        const key = parts[0];
+        const label = parts[1];
+        // 3番目以降（URLなど）をすべて結合して初期値とする
+        const defaultVal = parts.slice(2).join(':'); 
+        
+        if (key) defaults[key] = defaultVal;
+      });
+    });
+
+    // 置換処理
+    const content = (nodeData.content !== undefined && nodeData.content !== "") ? nodeData.content : (defaults['html'] || "");
+    html = html.split('$html').join(content);
+
     const attrs = nodeData.attrs || {};
-    html = html.replace(/\$src/g, attrs.src || "https://via.placeholder.com/150");
-    html = html.replace(/\$alt/g, attrs.alt || "");
-    html = html.replace(/\$href/g, attrs.href || "#");
+    // src, href, alt などの属性を置換
+    Object.keys(defaults).forEach(key => {
+      if (key === 'html') return;
+      const val = (attrs[key] !== undefined && attrs[key] !== "") ? attrs[key] : (defaults[key] || "");
+      html = html.split(`$${key}`).join(val);
+    });
 
-    const temp = document.createElement('div');
-    temp.innerHTML = html.trim();
-    const el = temp.firstElementChild;
-
+    const finalTemp = document.createElement('div');
+    finalTemp.innerHTML = html.trim();
+    const el = finalTemp.firstElementChild;
     el.setAttribute(this.ctx.CONFIG.ATTRIBUTES.TREE_ID, nodeData.id);
     el.setAttribute(this.ctx.CONFIG.ATTRIBUTES.MODULE, nodeData.type);
 
-    // 3. 子要素（children）の流し込み
-    if (nodeData.children && nodeData.children.length > 0) {
-      const dzAttr = this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE;
-      const dz = el.hasAttribute(dzAttr) ? el : el.querySelector(`[${dzAttr}]`);
-
-      if (dz) {
-        dz.innerHTML = "";
+    // 3. 子要素（入れ子）の処理
+    const dzAttr = this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE;
+    const dz = el.hasAttribute(dzAttr) ? el : el.querySelector(`[${dzAttr}]`);
+    if (dz) {
+      dz.innerHTML = "";
+      if (nodeData.children && nodeData.children.length > 0) {
         nodeData.children.forEach(childData => {
-          // 子（枠）を描画する際、自身の定義（def）を渡して「枠」の見た目を決めさせる
           const childDom = this.renderNode(childData, def);
           if (childDom) {
-            // ここで dz 自体を置き換えるのではなく、dz の親に枠を並べる形にする
-            // グリッドセット等の場合、dz要素そのものが「枠」のひな形なので、
-            // その親要素に「生成された枠」をどんどん追加していく
-            dz.parentElement.appendChild(childDom);
+            if (dz === el) { el.appendChild(childDom); } 
+            else { dz.parentElement.appendChild(childDom); }
           }
         });
-        // 元のひな形用 dz 要素は不要になるので削除
-        dz.remove();
+        if (dz !== el) dz.remove();
       }
     }
 
@@ -217,36 +224,40 @@ export class WebModuleBuilder {
     const def = this.ctx.ELEMENT_DEFS[defId];
     if (!def) return null;
 
+    // テンプレートから初期ラベルを抽出（data-tree-view があればその初期値を採用）
+    const temp = document.createElement('div');
+    temp.innerHTML = def.template;
+    const treeViewEl = temp.querySelector('[data-tree-view]');
+    
+    let initialLabel = def.label;
+    if (treeViewEl) {
+      // $html などの変数を、data-edit の初期値で置換してラベルにする
+      const editConf = treeViewEl.getAttribute('data-edit');
+      if (editConf && editConf.includes('html:')) {
+        const parts = editConf.split(';').find(c => c.trim().startsWith('html:')).split(':');
+        initialLabel = parts.slice(2).join(':') || def.label;
+      }
+    }
+
     const newNode = {
       id: "id-" + Math.random().toString(36).slice(2, 11),
       type: defId,
-      label: def.label,
+      label: initialLabel, // ここで動的なラベルをセット
       children: [],
-      isStructure: !!def.default || def.template.includes(this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE)
+      isStructure: def.template.includes(this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE)
     };
 
-    if (def.default) {
-      // 1. まずテンプレートから実際の「ドロップゾーン」要素を特定する
-      const tempDiv = document.createElement('div');
-      tempDiv.innerHTML = def.template;
-      const dzEl = tempDiv.querySelector(`[${this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE}]`);
-      
-      if (dzEl) {
-        // 2. 「枠（ドロップゾーン）」という階層データを作る
-        const dzNode = {
-          id: "id-" + Math.random().toString(36).slice(2, 11),
-          type: 'structure-box',
-          label: dzEl.getAttribute(this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE) || "枠",
-          isStructure: true,
-          children: []
-        };
-        
-        // 3. その枠の中に初期モジュール（テキスト等）を入れる
-        const childModule = this.createInitialData(def.default);
-        if (childModule) dzNode.children.push(childModule);
-        
-        newNode.children.push(dzNode);
-      }
+    // 構造体（コンテナ）の場合の処理
+    const dzEl = temp.querySelector(`[${this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE}]`);
+    if (dzEl) {
+      const dzNode = {
+        id: "id-" + Math.random().toString(36).slice(2, 11),
+        type: 'structure-box',
+        label: dzEl.getAttribute(this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE) || "枠",
+        isStructure: true,
+        children: [this.createInitialData('m-text01')] // 初期テキスト
+      };
+      newNode.children.push(dzNode);
     }
 
     return newNode;
@@ -414,84 +425,84 @@ export class WebModuleBuilder {
    * @param {Object} node - 対象のツリーノードデータ
    */
   openEditPanel(node) {
-    // マスターデータの参照を確実に取得（編集内容を this.data に残すため）
     const masterNode = this.logic.findNodeById(this.data, node.id);
-    if (!masterNode) return;
-
-    const styleBlock = document.querySelector(this.ctx.CONFIG.SELECTORS.STYLE_BLOCK);
     const container = document.querySelector(this.ctx.CONFIG.SELECTORS.STYLE_PANEL_INNER);
-    if (!styleBlock || !container) return;
+    const styleBlock = document.querySelector(this.ctx.CONFIG.SELECTORS.STYLE_BLOCK);
+    if (!masterNode || !container || !styleBlock) return;
 
-    // パネルを表示し、中身をクリア
+    // パネルを表示して中身をクリア
     styleBlock.classList.remove('is-hidden');
     container.innerHTML = "";
 
-    // 共通のパネル外枠を生成
     const panelBase = this.ui.createEditPanelBase(masterNode, this.ctx.STYLE_DEFS);
     container.appendChild(panelBase);
 
     const def = this.ctx.ELEMENT_DEFS[masterNode.type];
     const specWrap = panelBase.querySelector('#content-specific-editor');
 
-    // --- 属性とテキスト編集の統合 (data-edit の解析) ---
-    if (def) {
+    if (def && specWrap) {
       const temp = document.createElement('div');
       temp.innerHTML = def.template;
-      // テンプレート内で data-edit を持つ要素を探す（なければルート）
-      const editableEl = temp.querySelector('[data-edit]') || temp.firstElementChild;
+      const editEls = temp.querySelectorAll('[data-edit]');
 
-      if (editableEl && editableEl.hasAttribute('data-edit')) {
-        editableEl.getAttribute('data-edit').split(';').forEach(conf => {
+      editEls.forEach(el => {
+        el.getAttribute('data-edit').split(';').forEach(conf => {
+          // コロンで分割。parts[2]以降にURLが含まれる可能性があるため slice().join(':') を使用
           const parts = conf.split(':').map(s => s.trim());
-          if (parts.length < 2) return;
-          const [typeKey, label] = parts;
-          
+          const key = parts[0];
+          const label = parts[1];
+          const defaultVal = parts.slice(2).join(':');
+
           let currentVal = "";
-          if (typeKey === 'html') {
-            currentVal = masterNode.content || def.defaultContent || "";
+          if (key === 'html') {
+            // データがなければ初期値を代入して保持
+            if (masterNode.content === undefined || masterNode.content === "") {
+              masterNode.content = defaultVal;
+            }
+            currentVal = masterNode.content;
           } else {
-            currentVal = (masterNode.attrs && masterNode.attrs[typeKey]) || "";
+            if (!masterNode.attrs) masterNode.attrs = {};
+            // 属性（src等）がなければ初期値を代入して保持
+            if (masterNode.attrs[key] === undefined || masterNode.attrs[key] === "") {
+              masterNode.attrs[key] = defaultVal;
+            }
+            currentVal = masterNode.attrs[key];
           }
 
-          // UI側の入力行を生成
+          // UIフィールドの作成（入力時に即座に this.data を更新して再描画）
           const row = this.ui.createEditFieldRow(label, currentVal, (newVal) => {
-            // 【重要】DOMではなくJSONデータを更新する
-            if (typeKey === 'html') {
+            if (key === 'html') {
               masterNode.content = newVal;
+              
+              // 【ここを追加】data-tree-view が指定されている場合、ツリーのラベルも更新する
+              const tempDiv = document.createElement('div');
+              tempDiv.innerHTML = def.template;
+              if (tempDiv.querySelector('[data-tree-view]')) {
+                masterNode.label = newVal || def.label; // 空なら定義のラベルに戻す
+              }
             } else {
-              if (!masterNode.attrs) masterNode.attrs = {};
-              masterNode.attrs[typeKey] = newVal;
+              masterNode.attrs[key] = newVal;
             }
-            
-            // プレビュー側のみを再描画（サイドバーは更新せず、入力フォーカスを維持）
-            const previewRoot = document.querySelector(this.ctx.CONFIG.SELECTORS.CONTAINER_INNER);
-            if (previewRoot) {
-              previewRoot.innerHTML = "";
-              this.data.forEach(n => {
-                const el = this.renderNode(n);
-                if (el) previewRoot.appendChild(el);
-              });
-            }
-          }, (typeKey === 'src' || typeKey === 'href') ? 'input' : 'text');
+            // プレビューとサイドバーを同期
+            this.syncView();
+          }, (key === 'src' || key === 'href') ? 'input' : 'text');
           
           specWrap.appendChild(row);
         });
-      }
+      });
     }
 
-    // --- スタイル編集（既存のCSS変数操作） ---
+    // スタイル編集（既存の処理を維持）
     const targetDom = document.querySelector(`[${this.ctx.CONFIG.ATTRIBUTES.TREE_ID}="${node.id}"]`);
     if (targetDom) {
       const styleStr = targetDom.getAttribute('style') || "";
       const pref = masterNode.type?.startsWith('m-') ? "module" : "layout";
       const propsList = panelBase.querySelector('#active-props-list');
-
       this.ctx.STYLE_DEFS.forEach(sDef => {
         const regex = new RegExp(`--${pref}-${sDef.prop}\\s*:\\s*([^;]+)`);
         const match = styleStr.match(regex);
         if (match) this.addPropInput(sDef, propsList, node.id, match[1].trim());
       });
-
       panelBase.querySelector('#prop-selector').onchange = (e) => {
         if (!e.target.value) return;
         this.addPropInput(JSON.parse(e.target.value), propsList, node.id);
@@ -513,20 +524,18 @@ export class WebModuleBuilder {
     if (!displayInner) return;
 
     displayInner.innerHTML = "";
-    // ルートへの追加行
-    displayInner.appendChild(this.ui.createAddRow(null));
+    displayInner.appendChild(this.ui.createAddRow(null)); // ルート用
 
     const toHtml = (node) => {
       const id = this.ui.escapeHtml(node.id);
-      const isStr = node.isStructure;
-      const isRealModule = node.type !== 'structure-box';
-      const showHandle = node.type !== 'structure-box';
+      const isStrBox = node.type === 'structure-box';
+      const canHaveChildren = node.isStructure || isStrBox;
       
       return `
         <li data-id="${id}" class="tree-item">
-          <div class="parent${isStr ? " no-drag" : ""}" data-row-id="${id}">
-            ${showHandle ? `<span class="drag-handle">≡</span>` : ""}
-            <span class="label-text">${this.ui.escapeHtml(node.label)}</span>
+          <div class="parent${isStrBox ? " no-drag structure-row" : ""}" data-row-id="${id}">
+            ${!isStrBox ? `<span class="drag-handle">≡</span>` : ""}
+            <span class="label-text">${isStrBox ? `[${this.ui.escapeHtml(node.label)}]` : this.ui.escapeHtml(node.label)}</span>
             
             <div class="row-controls">
               <div class="manage-controls" data-manage-for="${id}">
@@ -539,7 +548,8 @@ export class WebModuleBuilder {
             ${node.children?.map(toHtml).join("") ?? ""}
           </ul>
 
-          ${(isRealModule && this.ctx.ELEMENT_DEFS[node.type]?.default) 
+          ${/* グリッドセット自体などのコンテナ系に「枠追加ボタン」を出すスロット */
+            (node.type !== 'structure-box' && this.ctx.ELEMENT_DEFS[node.type]?.template.includes(this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE)) 
             ? `<div data-blockadd-for="${id}"></div>` 
             : ""
           }
@@ -548,7 +558,7 @@ export class WebModuleBuilder {
 
     displayInner.insertAdjacentHTML("beforeend", `<ul class="sortable-list">${tree.map(toHtml).join("")}</ul>`);
 
-    // --- ボタン（編集・削除・枠追加）のマウント ---
+    // --- ボタンのマウント ---
     displayInner.querySelectorAll('.tree-item').forEach(li => {
       const id = li.getAttribute('data-id');
       const node = this.logic.findNodeById(tree, id);
@@ -556,17 +566,19 @@ export class WebModuleBuilder {
 
       const mSlot = li.querySelector(`[data-manage-for="${id}"]`);
       if (mSlot) {
-        mSlot.appendChild(this.ui.createEditButton(node));
+        // 枠（structure-box）には削除ボタンだけ、通常モジュールには編集・削除
+        if (! (node.type === 'structure-box')) mSlot.appendChild(this.ui.createEditButton(node));
         mSlot.appendChild(this.ui.createDeleteButton(node));
       }
 
+      // 【修正ポイント】枠（structure-box）にも「＋」ボタンを確実に出す
       const addSlot = li.querySelector(`[data-add-for="${id}"]`);
-      if (addSlot && node.isStructure) {
+      if (addSlot && (node.isStructure || node.type === 'structure-box')) {
         addSlot.appendChild(this.ui.createAddRow(node));
       }
     });
 
-    // 「+ 枠を追加」ボタンの特殊処理
+    // 「+ 枠を追加」ボタンの描画
     displayInner.querySelectorAll("[data-blockadd-for]").forEach(slot => {
         const id = slot.getAttribute("data-blockadd-for");
         const node = this.logic.findNodeById(tree, id);
@@ -582,15 +594,13 @@ export class WebModuleBuilder {
               <button type="button" class="blockAddBtn">+ ${label}を追加</button>
             </div>
           `);
-
           btnContainer.querySelector('button').onclick = (e) => {
             e.stopPropagation();
             this.addStructure(node.id, label);
           };
-
           slot.replaceWith(btnContainer);
         }
-      });
+    });
 
     displayInner.querySelectorAll("ul.sortable-list").forEach(ul => this.initSortable(ul));
     this.bindHoverEvents(displayInner);
@@ -763,11 +773,10 @@ export class WebModuleBuilder {
    * @param {string} label - 表示ラベル（"グリッド" または "リスト"）
    */
   addStructure(parentId, label) {
-    // 1. ツリーデータから親ノードを探す
     const parentNode = this.logic.findNodeById(this.data, parentId);
     if (!parentNode) return;
 
-    // 2. 新しい枠（structure-box）のデータを生成
+    // 1. 新しい枠を作成
     const newStructure = {
       id: "id-" + Math.random().toString(36).slice(2, 11),
       type: 'structure-box',
@@ -776,23 +785,20 @@ export class WebModuleBuilder {
       isStructure: true
     };
 
-    // --- 【ここが修正ポイント】初期モジュールの自動挿入 ---
-    // 親要素（l-gridContents01など）の定義から、デフォルトで入れるべきモジュールIDを取得
-    const parentDef = this.ctx.ELEMENT_DEFS[parentNode.type];
-    if (parentDef && parentDef.default) {
-      // 親の default (例: 'm-text01') を使って初期データを生成
-      const childModule = this.createInitialData(parentDef.default);
-      if (childModule) {
-        newStructure.children.push(childModule);
-      }
+    // 2. 【修正】初期モジュールを強制的に入れる
+    // 本来は定義から取得すべきですが、現状の ELEMENT_DEFS に合わせ、
+    // 確実に存在する 'm-text01' を初期モジュールとして生成して挿入します。
+    const defaultModuleId = 'm-text01'; 
+    const childModule = this.createInitialData(defaultModuleId);
+    if (childModule) {
+      newStructure.children.push(childModule);
     }
-    // ------------------------------------------------
 
     // 3. 親の children 配列に追加
     if (!parentNode.children) parentNode.children = [];
     parentNode.children.push(newStructure);
 
-    // 4. データが更新されたので画面全体を再描画
+    // 4. 再描画
     this.syncView();
   }
   // ---------------------------------------------------------------
