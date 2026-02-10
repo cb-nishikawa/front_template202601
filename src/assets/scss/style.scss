@@ -40,12 +40,71 @@
 
 @mixin sortable {
     /* ツリーの基本スタイル */
+    .moduleAddBtn {
+        appearance: none;
+        display: block;
+        width: 100%;
+        height: 20px;
+        margin: 0 auto;
+
+        background: #fafafa;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        padding: 0;
+        text-align: center;
+        align-items: center;
+        font-size: 10px;
+    }
+
+    .blockAddBtn {
+        appearance: none;
+        display: block;
+        width: 100%;
+        height: 20px;
+        margin: 5px auto 0;
+
+        background: #fafafa;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        padding: 0;
+        text-align: center;
+        align-items: center;
+        font-size: 10px;
+    }
+
+    
+    
     .sortable-list {
         list-style: none;
         margin: 0;
+
+        .manage-controls {
+            display: flex;
+            gap: 2px;
+        }
+
+        .moduleAddBtn {
+            width: 20px;
+            margin: 0;
+        }
+
+        .editBtn, .deleteBtn {
+            width: 20px;
+            height: 20px;
+            background: #fafafa;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            padding: 0;
+            text-align: center;
+            align-items: center;
+            font-size: 10px;
+        }
+
+        &>li {
+            margin-top: 5px;
+        }
         
         li {
-            margin: 4px 0;
             background: #fff;
             border: 1px solid #ddd;
             border-radius: 4px;
@@ -72,11 +131,16 @@
 
         /* 親階層（ComponentやBlock）のスタイル */
         .parent {
-            padding: 6px 10px;
+            display: flex;
+            gap: 5px;
             font-weight: bold;
             color: #333;
             background: #fdfdfd;
-            border-bottom: 1px inset #eee;
+        }
+
+        .row-controls {
+            display: flex;
+            justify-content: space-between;
         }
 
         /* 設定ボタン（⚙）のスタイル調整 */
@@ -116,7 +180,6 @@
 
         .label-text {
             flex: 1; /* ラベルを広げてボタンを右側に寄せる */
-            margin-right: 10px;
         }
     }
 
@@ -178,8 +241,8 @@
     ul {
         li {
             font-size: var(--list-font-size, 10px);
-            ul {
-                padding-left: 1ch;
+            &:has(> ul) {
+                padding: 5px;
             }
         }
     }
@@ -230,7 +293,7 @@
 
 .g-treeDisplay {
     height: 100%;
-    padding-left: 10px;
+    padding: 5px;
     &>.wrapper {
         height: 100%;
         overflow: auto;
