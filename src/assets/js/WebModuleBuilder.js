@@ -14,8 +14,10 @@ export const createWebModuleBuilder = (options) => {
    * (wrapper/inner構造を考慮して、実際に要素が追加される場所を特定する)
    */
   const findContentContainer = (el) => {
-    if (el.hasAttribute('data-drop-zone')) return el;
-    return el.querySelector(':scope > .wrapper > .inner') || el.querySelector(':scope > .inner') || el;
+    const dropZoneAttr = ctx.CONFIG.ATTRIBUTES.DROP_ZONE;
+    if (el.hasAttribute(dropZoneAttr)) return el;
+    // セレクタとして使う場合は属性名に [] をつける
+    return el.querySelector(`:scope > .wrapper > .inner, :scope > .inner, :scope > [${dropZoneAttr}]`) || el;
   };
 
   /**
@@ -31,14 +33,19 @@ export const createWebModuleBuilder = (options) => {
    * 実DOMから「編集用ツリーデータ(JSON)」を再帰的に生成する
    * (現在のプレビュー画面の構造を読み取って、左側のツリー表示用データを作る)
    */
+  
   const buildModuleTree = (root) => {
     if (!root) return [];
+    // 属性名を変数化（例: 'data-drop-zone'）
+    const dropZoneAttr = ctx.CONFIG.ATTRIBUTES.DROP_ZONE; 
+
     return Array.from(root.children)
       .filter(el => !el.closest(ctx.CONFIG.SELECTORS.EXCLUDE_AREAS))
       .map(el => {
         const comp = el.getAttribute(ctx.CONFIG.ATTRIBUTES.COMPONENT);
         const mod = el.getAttribute(ctx.CONFIG.ATTRIBUTES.MODULE);
-        const hasDropZone = el.hasAttribute('data-drop-zone');
+        // ハードコードを ctx.CONFIG 参照に変更
+        const hasDropZone = el.hasAttribute(dropZoneAttr);
 
         if (comp || mod || hasDropZone) {
           let label = "";
@@ -236,7 +243,11 @@ export const createWebModuleBuilder = (options) => {
       renderTree(node.children || [], li, ctx);
 
       // レイアウト要素またはリスト要素の場合、末尾に「枠追加」ボタンを表示
-      if (node.label.includes('【l】') || node.label.includes('m-uList01')) {
+      const hasStructureChild = node.children && node.children.some(child => 
+        child.label.includes(ctx.LABELS.STRUCTURE)
+      );
+
+      if (!isStructure && hasStructureChild) {
         li.appendChild(createFastAddFrameBtn(node, ctx));
       }
 

@@ -10,7 +10,8 @@ export const CONFIG = {
   ATTRIBUTES: {
     TREE_ID: 'data-tree-id',
     COMPONENT: 'data-component',
-    MODULE: 'data-module'
+    MODULE: 'data-module',
+    DROP_ZONE: 'data-drop-zone'
   },
   LABELS: {
     COMPONENT: '【c】',
