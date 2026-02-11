@@ -31,7 +31,77 @@
             &>.block.contents {
                 flex: 1;
                 order: 1;
+                position: relative;
                 
+                // ルート要素（一番外側の親）が空でもドロップできるように最小高さを確保
+                min-height: 300px; 
+                padding-bottom: 100px; // 下の方に落としやすくする余白
+                
+
+                /* ドロップゾーン（グリッドやリストの中身）も空の時の受け皿を作る */
+                [data-drop-zone] {
+                    min-height: 30px; 
+                    outline: 1px dashed rgba(52, 152, 219, 0.2); // ONの時だけ見えるガイド
+                    margin-bottom: 10px;
+                }
+
+                &.drag-enabled {
+                    .is-preview-draggable:hover > .preview-drag-handle {
+                        opacity: 1; /* ホバー時だけ表示 */
+                    }
+                    // ルート要素(inner)自体を少し広げる
+                    & > [data-target="container-inner"] {
+                        min-height: 500px;
+                        padding-bottom: 100px !important; // 下部に大きなドロップエリアを確保
+                        background-color: rgba(52, 152, 219, 0.02);
+                    }
+
+                    // ドラッグ中、移動先の候補（ゴースト）を見やすくする
+                    .sortable-ghost {
+                        opacity: 0.4;
+                        background: #3498db !important;
+                        outline: 2px solid #3498db;
+                        height: 10px !important; // 線のように表示
+                        overflow: hidden;
+                    }
+                }
+
+                /* ドラッグできる要素の親（相対配置の基準） */
+                .is-preview-draggable {
+                    position: relative !important;
+                    outline: 1px dashed transparent;
+                    transition: outline 0.2s;
+                }
+
+                /* ホバー時に枠を表示 */
+                .is-preview-draggable:hover {
+                    outline: 1px dashed #3498db;
+                }
+
+                /* 右上の3本線ハンドル */
+                .preview-drag-handle {
+                    position: absolute;
+                    top: 5px;
+                    right: 5px;
+                    width: 24px;
+                    height: 24px;
+                    background: #3498db;
+                    color: #fff;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    cursor: grab;
+                    z-index: 100;
+                    border-radius: 3px;
+                    font-size: 14px;
+                    opacity: 0; /* 普段は隠す */
+                    transition: opacity 0.2s;
+                }
+
+                .preview-drag-handle:active {
+                    cursor: grabbing;
+                }
+
             }
         }
     }
@@ -284,10 +354,6 @@
 
         }
     }
-    &--window {
-        
-        @include sortable;
-    }
 
 }
 
@@ -371,58 +437,123 @@
             }
         }
     }
-
-    &--window {
-        &>.wrapper {
-            padding: 20px;
-
-            &>.inner {
-                h3 {
-                    font-size: 14px;
-                    border-bottom: 2px solid #333;
-                    margin-bottom: 20px;
-                    padding-bottom: 5px;
-                }
-
-                .field {
-                    margin-bottom: 15px;
-                    display: flex;
-                    flex-direction: column;
-
-                    label {
-                        font-size: 10px;
-                        color: #888;
-                        margin-bottom: 5px;
-                        font-family: monospace;
-                    }
-
-                    .input-group {
-                        display: flex;
-                        gap: 5px;
-
-                        input {
-                            flex: 1;
-                            padding: 8px;
-                            border: 1px solid #ddd;
-                            border-radius: 4px;
-                            font-size: 13px;
-                        }
-
-                        select {
-                            width: 80px;
-                            padding: 8px;
-                            border: 1px solid #ddd;
-                            border-radius: 4px;
-                            background: #f8f8f8;
-                            cursor: pointer;
-                        }
-                    }
-                }
-            }
-        }
-    }
 }
 
 [data-component], [data-module] {
   opacity: var(--tree-hover, 1.0);
 }
+
+
+
+
+.g-treeSet {
+
+    #builder-toolbar {
+        background: #f1f3f5;
+        border-bottom: 1px solid #dee2e6;
+    }
+
+    .toolbar-inner {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between; /* 両端に寄せる */
+        align-items: center;
+        gap: 4px;
+        padding: 5px;
+    }
+
+    .toolbar-group {
+        display: flex;
+        gap: 3px;
+        width: 100%;
+    }
+
+    .toolbar-btn {
+        width: 100%;
+        padding: 5px 5px;
+        font-size: 11px;
+        font-weight: 500;
+        color: #495057;
+        background: #fff;
+        border: 1px solid #ced4da;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .toolbar-btn:hover {
+        background: #e9ecef;
+        border-color: #adb5bd;
+    }
+
+    /* 危険操作（初期化）ボタン */
+    .toolbar-btn.btn-danger {
+        color: #e03131;
+        border-color: #ffc9c9;
+    }
+
+    .toolbar-btn.btn-danger:hover {
+        background: #fa5252;
+        color: #fff;
+        border-color: #fa5252;
+    }
+
+    /* デフォルトではハンドルを隠し、ポインタイベントを無効にする */
+    .preview-drag-handle {
+        display: none;
+        pointer-events: none;
+    }
+
+    /* drag-enabledクラスがある時だけ表示して掴めるようにする */
+    .drag-enabled .preview-drag-handle {
+        display: flex;
+        pointer-events: auto;
+        opacity: 1; /* 常に表示させてもいいし、hoverにしてもOK */
+    }
+
+    /* インライン用のトグルスイッチの見た目 */
+    .toggle-switch-inline {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+        font-size: 12px;
+    }
+
+    .toggle-switch-inline input {
+        display: none;
+    }
+
+    .toggle-slider {
+        width: 34px;
+        height: 18px;
+        background: #ccc;
+        border-radius: 20px;
+        position: relative;
+        transition: .3s;
+    }
+
+    .toggle-slider::before {
+        content: "";
+        position: absolute;
+        width: 14px;
+        height: 14px;
+        left: 2px;
+        bottom: 2px;
+        background: white;
+        border-radius: 50%;
+        transition: .3s;
+    }
+
+    input:checked + .toggle-slider {
+        background: #3498db;
+    }
+
+    input:checked + .toggle-slider::before {
+        transform: translateX(16px);
+    }
+}
+
+
+
+

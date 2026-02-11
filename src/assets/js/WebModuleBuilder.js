@@ -10,7 +10,8 @@ export class WebModuleBuilder {
     
     // マスターデータ（JSON）。この配列がページのすべてを決定します。
     this.data = []; 
-    
+
+    this.previewDragEnabled = false;
     this.historyStack = [];
     this.handleKeyDown = this.handleKeyDown.bind(this);
   }
@@ -20,6 +21,7 @@ export class WebModuleBuilder {
    * ビルダーの初期化
    */
   init() {
+    this.renderToolbar(); 
     const previewRoot = document.querySelector(this.ctx.CONFIG.SELECTORS.CONTAINER_INNER);
     
     // ★修正：まずローカルストレージからの読み込みを試みる
@@ -32,6 +34,43 @@ export class WebModuleBuilder {
 
     this.syncView();
     window.addEventListener('keydown', this.handleKeyDown);
+  }
+  // ---------------------------------------------------------------
+
+
+
+  /**
+   * ツールバーのボタンをJSで生成して配置する
+   */
+  renderToolbar() {
+    const toolbar = document.getElementById('builder-toolbar');
+    if (!toolbar) return;
+
+    toolbar.innerHTML = ""; // 初期化
+
+    // 1. エクスポートボタン
+    const exportBtn = document.createElement('button');
+    exportBtn.id = "export-btn";
+    exportBtn.textContent = "エクスポート";
+    exportBtn.onclick = () => this.exportJSON();
+
+    // 2. インポートボタン
+    const importBtn = document.createElement('button');
+    importBtn.id = "import-btn";
+    importBtn.textContent = "インポート";
+    importBtn.onclick = () => this.importJSON();
+
+    // 3. 保存データ削除（リセット）ボタン
+    const clearBtn = document.createElement('button');
+    clearBtn.id = "clear-btn";
+    clearBtn.textContent = "初期化";
+    clearBtn.className = "btn-danger"; // 赤色にするなどのクラス
+    clearBtn.onclick = () => this.clearLocalStorage();
+
+    // まとめてツールバーに追加
+    toolbar.appendChild(exportBtn);
+    toolbar.appendChild(importBtn);
+    toolbar.appendChild(clearBtn);
   }
   // ---------------------------------------------------------------
 
@@ -61,6 +100,8 @@ export class WebModuleBuilder {
 
     // ★追加：データが更新されるたびにローカルストレージに保存
     this.saveToLocalStorage();
+
+    this.initPreviewSortable();
   }
   // ---------------------------------------------------------------
 
@@ -117,6 +158,16 @@ export class WebModuleBuilder {
     const finalTemp = document.createElement('div');
     finalTemp.innerHTML = html.trim();
     const el = finalTemp.firstElementChild;
+
+    // --- 【追加】プレビュー用ドラッグハンドルの挿入 ---
+    // structure-box（枠）以外にはハンドルを付ける
+    if (nodeData.type !== 'structure-box') {
+      const handle = document.createElement('div');
+      handle.className = 'preview-drag-handle';
+      handle.innerHTML = '≡'; // 3本線
+      el.appendChild(handle);
+      el.classList.add('is-preview-draggable');
+    }
 
     // --- スタイルの復元 ---
     if (nodeData.styles) {
@@ -330,6 +381,71 @@ export class WebModuleBuilder {
     });
   }
   // ---------------------------------------------------------------
+
+
+
+
+  /**
+   * プレビューDOM側の並び替えを有効にする
+   */
+  initPreviewSortable() {
+    // ドラッグ無効時は何もしない
+    if (!this.previewDragEnabled) return;
+
+    const previewRoot = document.querySelector(this.ctx.CONFIG.SELECTORS.CONTAINER_INNER);
+    if (!previewRoot) return;
+
+    // ルートと全ドロップゾーンを対象にする
+    const containers = [
+      previewRoot,
+      ...Array.from(document.querySelectorAll(`[${this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE}]`))
+    ];
+
+    containers.forEach(container => {
+      // 既存のインスタンスがあれば一旦破棄してクリーンにする（重複バインド防止）
+      if (container._sortableInstance) {
+        container._sortableInstance.destroy();
+      }
+
+      container._sortableInstance = new Sortable(container, {
+        // グループ設定をオブジェクト形式にし、pull/putを明示する
+        group: {
+          name: 'preview-nested',
+          pull: true, // 他のリストへ出せる
+          put: true   // 他のリストから受け取れる（これがルート移動に必須）
+        },
+        animation: 150,
+        handle: '.preview-drag-handle',
+        fallbackOnBody: true,
+        swapThreshold: 0.65,
+        invertSwap: true, // 階層間の移動をスムーズにする
+
+        onEnd: (evt) => {
+          const { item, from, to, newIndex } = evt;
+          const treeIdAttr = this.ctx.CONFIG.ATTRIBUTES.TREE_ID;
+          const targetId = item.getAttribute(treeIdAttr);
+          
+          // --- 親ID判定のロジックを修正 ---
+          // to（ドロップ先）が previewRoot そのものならルート（null）
+          // それ以外なら、一番近い TREE_ID を持つ要素からIDを取得
+          const toId = (to === previewRoot) 
+            ? null 
+            : to.closest(`[${treeIdAttr}]`)?.getAttribute(treeIdAttr);
+
+          const fromId = (from === previewRoot) 
+            ? null 
+            : from.closest(`[${treeIdAttr}]`)?.getAttribute(treeIdAttr);
+
+          // データを移動
+          this.moveDataNode(targetId, fromId, toId, newIndex);
+          // 再描画
+          this.syncView();
+        }
+      });
+    });
+  }
+  // ---------------------------------------------------------------
+
 
 
 
@@ -839,28 +955,15 @@ export class WebModuleBuilder {
   /**
    * 設定されたスタイルをCSS変数としてエクスポートする
    */
-  exportCSS() {
-    let cssOutput = "/* Generated CSS */\n\n";
-    const walk = (nodes) => {
-      nodes.forEach(n => {
-        if (n.styles && Object.keys(n.styles).length > 0) {
-          const pref = n.type?.startsWith('m-') ? "module" : "layout";
-          cssOutput += `[${this.ctx.CONFIG.ATTRIBUTES.TREE_ID}="${n.id}"] {\n`;
-          Object.entries(n.styles).forEach(([p, v]) => {
-            cssOutput += `  --${pref}-${p}: ${v};\n`;
-          });
-          cssOutput += `}\n\n`;
-        }
-        if (n.children) walk(n.children);
-      });
-    };
-    walk(this.data);
+  renderToolbar() {
+    const toolbarContainer = document.getElementById('builder-toolbar');
+    if (!toolbarContainer) return;
 
-    const blob = new Blob([cssOutput], { type: 'text/css' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `style-${Date.now()}.css`;
-    a.click();
+    toolbarContainer.innerHTML = ""; // 一旦クリア
+    
+    // UIクラスに builder インスタンスを渡して、完成した要素をもらう
+    const toolbarEl = this.ui.createToolbar(this);
+    toolbarContainer.appendChild(toolbarEl);
   }
   // ---------------------------------------------------------------
 
@@ -953,6 +1056,22 @@ export class WebModuleBuilder {
 
 
 
+  /**
+   * プレビューのドラッグ有効・無効を切り替える
+   */
+  togglePreviewDrag(enabled) {
+    this.previewDragEnabled = enabled;
+    
+    // プレビュー全体にクラスを付与/削除（CSSでの表示切り替え用）
+    const container = document.querySelector(this.ctx.CONFIG.SELECTORS.CONTAINER_INNER);
+    if (container) {
+      container.classList.toggle('drag-enabled', enabled);
+    }
+
+    // Sortableの有効化・無効化を制御
+    this.syncView(); 
+  }
+  // ---------------------------------------------------------------
 
 }
 

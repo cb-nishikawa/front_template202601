@@ -235,4 +235,46 @@ export class WebModuleUI {
   // ---------------------------------------------------------------
 
 
+
+  /**
+   * ツールバーを生成し、クリックイベントもここで紐付ける
+   * @param {WebModuleBuilder} builder - メソッド呼び出し用のインスタンス
+   */
+  createToolbar(builder) {
+    const html = `
+      <div class="toolbar-inner">
+        <div class="toolbar-group">
+          <button type="button" id="export-btn" class="toolbar-btn">エクスポート</button>
+          <button type="button" id="import-btn" class="toolbar-btn">インポート</button>
+          <button type="button" id="clear-btn" class="toolbar-btn btn-danger">初期化</button>
+        </div>
+        
+        <div class="toolbar-group">
+          <label class="toggle-switch-inline">
+            <input type="checkbox" id="preview-drag-toggle">
+            <span class="toggle-slider"></span>
+            <span class="toggle-label">プレビュー操作</span>
+          </label>
+        </div>
+      </div>
+    `.trim();
+
+    const temp = document.createElement('div');
+    temp.innerHTML = html;
+    const toolbarEl = temp.firstElementChild;
+
+    // トグルのイベント
+    const toggle = toolbarEl.querySelector('#preview-drag-toggle');
+    toggle.onchange = (e) => builder.togglePreviewDrag(e.target.checked);
+
+    // 他のボタン
+    toolbarEl.querySelector('#export-btn').onclick = () => builder.exportJSON();
+    toolbarEl.querySelector('#import-btn').onclick = () => builder.importJSON();
+    toolbarEl.querySelector('#clear-btn').onclick = () => builder.clearLocalStorage();
+
+    return toolbarEl;
+  }
+  // ---------------------------------------------------------------
+
+
 } 
