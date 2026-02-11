@@ -23,54 +23,101 @@ export const CONFIG = {
 };
 
 export const ELEMENT_DEFS = {
+  // --- テキストモジュール ---
   'm-text01': {
-    label: 'テキスト', tag: 'p',
+    label: 'テキスト', 
+    tag: 'p',
+    schema: {
+      'html': { label: 'テキスト内容', type: 'text', default: '新規テキスト', isContent: true }
+    },
     template: `
       <$tag data-module="m-text01">
         <span class="wrapper">
-          <span class="inner" data-edit="html:テキスト内容:新規テキスト" data-tree-view>$html</span>
+          <span class="inner" data-tree-view>$html</span>
         </span>
       </$tag>`.trim()
   },
+
+  // --- ボタンモジュール ---
   'm-btn01': {
-    label: 'ボタン', tag: 'p',
+    label: 'ボタン', 
+    tag: 'p',
+    schema: {
+      'html': { label: 'ボタンテキスト', type: 'text', default: 'ボタン', isContent: true },
+      'href': { label: 'リンク先URL', type: 'input', default: '/link' }
+    },
     template: `
       <$tag data-module="m-btn01">
-        <a href="$href" class="wrapper" data-edit="href:リンク先URL:/link">
-          <span class="inner" data-edit="html:ボタンテキスト:ボタンモジュール" data-tree-view>$html</span>
+        <a href="$href" class="wrapper">
+          <span class="inner" data-tree-view>$html</span>
         </a>
       </$tag>`.trim()
   },
+
+  // --- 画像モジュール ---
   'm-image01': {
-    label: '画像', tag: 'figure',
+    label: '画像', 
+    tag: 'figure',
+    schema: {
+      'src': { label: '画像URL', type: 'input', default: 'https://placehold.jp/200x120.png' },
+      'alt': { label: '説明文(ALT)', type: 'input', default: '新規画像' }
+    },
     template: `
       <$tag data-module="m-image01">
         <span class="wrapper">
           <span class="inner">
-            <img src="$src" alt="$alt" data-edit="src:画像URL:https://placehold.jp/200x120.png; alt:説明文(ALT):新規画像">
+            <img src="$src" alt="$alt">
           </span>
         </span>
       </$tag>`.trim()
   },
-  // グリッドやリストなどのコンテナ系はそのまま
+
+  // --- グリッドセット（コンテナ系） ---
   'l-gridContents01': {
-    label: 'グリッドセット', tag: 'div', 
+    label: 'グリッドセット', 
+    tag: 'div',
+    default: 'm-text01', // 枠を追加した時のデフォルト中身
+    schema: {
+      'grid': { label: '列数', type: 'text', default: '3' },
+      'type': { 
+        label: '種類', type: 'radio', default: 'standard',
+        options: [
+          { label: '標準', value: 'standard' },
+          { label: 'ワイド', value: 'wide' },
+          { label: 'フル', value: 'full' }
+        ]
+      },
+      'show': { 
+        label: '表示設定', type: 'checkbox', default: 'show',
+        options: [
+          { label: '表示する', value: 'show' },
+          { label: '非表示にする', value: 'hide' }
+        ]
+      }
+    },
     template: `
-     <$tag data-module="l-gridContents01" 
-          data-grid="$data:grid:列数:text:3" 
-          data-type="$data:type:種類:radio:standard:[標準:standard,ワイド:wide,フル:full]"
-          data-show="$data:show:表示設定:checkbox:show:[表示する:show,非表示にする:hide]">
+      <$tag data-module="l-gridContents01" 
+            data-grid="$grid" 
+            data-type="$type" 
+            data-show="$show">
         <div class="wrapper">
           <div class="inner">
-            <div class="block contents" data-drop-zone="グリッド">
-            </div>
+            <div class="block contents" data-drop-zone="グリッド"></div>
           </div>
         </div>
       </$tag>`.trim()
   },
+
+  // --- リストセット ---
   'm-uList01': {
-    label: 'リストセット', tag: 'ul', 
-    template: `<$tag data-module="m-uList01"><li data-drop-zone="リスト"></li></$tag>`.trim()
+    label: 'リストセット', 
+    tag: 'ul',
+    default: 'm-text01',
+    schema: {}, // 特別な属性設定がない場合は空
+    template: `
+      <$tag data-module="m-uList01">
+        <li data-drop-zone="リスト"></li>
+      </$tag>`.trim()
   }
 };
 

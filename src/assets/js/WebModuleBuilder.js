@@ -91,38 +91,35 @@ export class WebModuleBuilder {
     let html = def.template.replace(/\$tag/g, def.tag);
     const attrs = nodeData.attrs || {};
 
-    // --- 【新機能】$data:属性名:ラベル:初期値 の置換処理 ---
-    const dataRegex = /\$data:([\w-]+):([^:]+):([\w-]+):([^:">]+)(?::\[([^\]]+)\])?/g;
-    html = html.replace(dataRegex, (match, key, label, type, defaultVal) => {
-      return (attrs[key] !== undefined && attrs[key] !== "") ? attrs[key] : defaultVal;
-    });
-
-    // --- data-edit属性に基づく初期値解析 (URLコロン対策済み) ---
-    const parser = document.createElement('div');
-    parser.innerHTML = html;
-    const defaults = {};
-    parser.querySelectorAll('[data-edit]').forEach(el => {
-      el.getAttribute('data-edit').split(';').forEach(conf => {
-        const parts = conf.split(':').map(s => s.trim());
-        if (parts.length >= 3) {
-          defaults[parts[0]] = parts.slice(2).join(':'); // URLなどのコロンを維持
+    // --- 連想配列 schema に基づき、$変数（$grid, $html等）を一括置換 ---
+    if (def.schema) {
+      Object.entries(def.schema).forEach(([key, config]) => {
+        if (config.isContent) {
+          // $html 等のタグ内テキストの置換
+          const val = (nodeData.content !== undefined && nodeData.content !== "") 
+                      ? nodeData.content : config.default;
+          html = html.split(`$${key}`).join(val);
+        } else {
+          // $src, $href, $grid 等の属性値の置換
+          const val = (attrs[key] !== undefined && attrs[key] !== "") 
+                      ? attrs[key] : config.default;
+          html = html.split(`$${key}`).join(val);
         }
       });
-    });
-
-    // テキスト内容($html)の置換
-    const content = (nodeData.content !== undefined && nodeData.content !== "") ? nodeData.content : (defaults['html'] || "");
-    html = html.split('$html').join(content);
-
-    // 属性($src, $href, $alt)の置換
-    ['src', 'href', 'alt'].forEach(key => {
-      const val = (attrs[key] !== undefined && attrs[key] !== "") ? attrs[key] : (defaults[key] || "");
-      html = html.split(`$${key}`).join(val);
-    });
+    }
 
     const finalTemp = document.createElement('div');
     finalTemp.innerHTML = html.trim();
     const el = finalTemp.firstElementChild;
+
+    // --- スタイルの復元 ---
+    if (nodeData.styles) {
+      const pref = nodeData.type?.startsWith('m-') ? "module" : "layout";
+      Object.keys(nodeData.styles).forEach(prop => {
+        el.style.setProperty(`--${pref}-${prop}`, nodeData.styles[prop]);
+      });
+    }
+
     el.setAttribute(this.ctx.CONFIG.ATTRIBUTES.TREE_ID, nodeData.id);
     el.setAttribute(this.ctx.CONFIG.ATTRIBUTES.MODULE, nodeData.type);
 
@@ -370,56 +367,39 @@ export class WebModuleBuilder {
     const specWrap = panelBase.querySelector('#content-specific-editor');
     if (!def || !specWrap) return;
 
-    // --- A. data-edit（html, src等）の解析 ---
-    const temp = document.createElement('div');
-    temp.innerHTML = def.template;
-    temp.querySelectorAll('[data-edit]').forEach(el => {
-      el.getAttribute('data-edit').split(';').forEach(conf => {
-        const parts = conf.split(':').map(s => s.trim());
-        const key = parts[0], label = parts[1];
-        const defaultVal = parts.slice(2).join(':');
-
-        if (key === 'html') {
-          if (masterNode.content === undefined) masterNode.content = defaultVal;
-          specWrap.appendChild(this.ui.createEditFieldRow(label, masterNode.content, (v) => {
-            masterNode.content = v;
-            if (temp.querySelector('[data-tree-view]')) masterNode.label = v || def.label;
-            this.syncView();
-          }, 'text'));
+    // --- schema を回して編集フィールドを一括生成 ---
+    if (def.schema) {
+      Object.entries(def.schema).forEach(([key, config]) => {
+        // データの初期化
+        if (config.isContent) {
+          if (masterNode.content === undefined) masterNode.content = config.default;
         } else {
           if (!masterNode.attrs) masterNode.attrs = {};
-          if (masterNode.attrs[key] === undefined) masterNode.attrs[key] = defaultVal;
-          specWrap.appendChild(this.ui.createEditFieldRow(label, masterNode.attrs[key], (v) => {
-            masterNode.attrs[key] = v;
-            this.syncView();
-          }, 'input'));
+          if (masterNode.attrs[key] === undefined) masterNode.attrs[key] = config.default;
         }
+
+        const currentVal = config.isContent ? masterNode.content : masterNode.attrs[key];
+
+        // フィールド生成（text, radio, checkbox 等）
+        const field = this.createAdvancedField(
+          config.label, 
+          key, 
+          config.type, 
+          currentVal, 
+          config.options || [], 
+          (newVal) => {
+            if (config.isContent) {
+              masterNode.content = newVal;
+              // ツリー表示用ラベルの更新
+              masterNode.label = newVal || def.label;
+            } else {
+              masterNode.attrs[key] = newVal;
+            }
+            this.syncView();
+          }
+        );
+        specWrap.appendChild(field);
       });
-    });
-
-    // --- B. $data 変数の解析（高度な属性編集） ---
-    // 形式: $data:key:label:type:default[:options]
-    const dataRegex = /\$data:([\w-]+):([^:]+):([\w-]+):([^:">]+)(?::\[([^\]]+)\])?/g;
-    let match;
-    while ((match = dataRegex.exec(def.template)) !== null) {
-      const [_, key, label, type, defaultVal, optionsRaw] = match;
-      if (specWrap.querySelector(`[data-attr-key="${key}"]`)) continue;
-
-      if (!masterNode.attrs) masterNode.attrs = {};
-      if (masterNode.attrs[key] === undefined) masterNode.attrs[key] = defaultVal;
-
-      // オプション文字列をパースして [{label, value}] の配列にする
-      const options = optionsRaw ? optionsRaw.split(',').map(pair => {
-        const [l, v] = pair.split(':');
-        return { label: l.trim(), value: (v || l).trim() };
-      }) : [];
-
-      const field = this.createAdvancedField(label, key, type, masterNode.attrs[key], options, (newVal) => {
-        masterNode.attrs[key] = newVal;
-        this.syncView();
-      });
-      field.setAttribute('data-attr-key', key);
-      specWrap.appendChild(field);
     }
 
     // --- C. スタイル編集（既存通り） ---
@@ -439,6 +419,11 @@ export class WebModuleBuilder {
       };
     }
   }
+  // ---------------------------------------------------------------
+
+
+
+
 
   /**
    * 各種UIパーツ生成ヘルパー
@@ -603,36 +588,38 @@ export class WebModuleBuilder {
    */
   // ---------------------------------------------------------------
   addPropInput(item, parent, targetId, fullVal = "") {
-    // 重複チェック
     if (parent.querySelector(`[data-p="${item.prop}"]`)) return;
     
-    // 1. UIパーツの生成
     const propItem = this.ui.createPropInputItem(item, fullVal);
     const targetEl = document.querySelector(`[${this.ctx.CONFIG.ATTRIBUTES.TREE_ID}="${targetId}"]`);
+    const masterNode = this.logic.findNodeById(this.data, targetId);
 
-    // 接頭辞（module/layout）の判定
-    const getPrefix = () => {
-      const modAttr = targetEl?.getAttribute(this.ctx.CONFIG.ATTRIBUTES.MODULE) || "";
-      return modAttr.startsWith('m-') ? "module" : "layout";
-    };
-
-    // 2. 更新イベントの紐付け
     const updateStyles = () => {
-      if (!targetEl) return;
+      if (!masterNode) return;
       const val = propItem.getValue();
-      targetEl.style.setProperty(`--${getPrefix()}-${item.prop}`, val);
+      const pref = masterNode.type?.startsWith('m-') ? "module" : "layout";
+      
+      // 実DOMに反映
+      if (targetEl) {
+        targetEl.style.setProperty(`--${pref}-${item.prop}`, val);
+      }
+      
+      // JSONデータ（styles枠）に保存
+      if (!masterNode.styles) masterNode.styles = {};
+      masterNode.styles[item.prop] = val;
     };
 
-    propItem.querySelectorAll('input, select').forEach(el => el.oninput = updateStyles);
-
-    // 3. 削除イベントの紐付け
+    // 削除時の処理
     propItem.querySelector('.del-p').onclick = () => {
-      if (targetEl) {
-        targetEl.style.removeProperty(`--${getPrefix()}-${item.prop}`);
+      if (masterNode) {
+        const pref = masterNode.type?.startsWith('m-') ? "module" : "layout";
+        if (targetEl) targetEl.style.removeProperty(`--${pref}-${item.prop}`);
+        if (masterNode.styles) delete masterNode.styles[item.prop];
       }
       propItem.remove();
     };
 
+    propItem.querySelectorAll('input, select').forEach(el => el.oninput = updateStyles);
     parent.appendChild(propItem);
   }
   // ---------------------------------------------------------------
@@ -809,6 +796,38 @@ export class WebModuleBuilder {
   // ---------------------------------------------------------------
 
 
+
+
+  /**
+   * 設定されたスタイルをCSS変数としてエクスポートする
+   */
+  exportCSS() {
+    let cssOutput = "/* Generated CSS */\n\n";
+    const walk = (nodes) => {
+      nodes.forEach(n => {
+        if (n.styles && Object.keys(n.styles).length > 0) {
+          const pref = n.type?.startsWith('m-') ? "module" : "layout";
+          cssOutput += `[${this.ctx.CONFIG.ATTRIBUTES.TREE_ID}="${n.id}"] {\n`;
+          Object.entries(n.styles).forEach(([p, v]) => {
+            cssOutput += `  --${pref}-${p}: ${v};\n`;
+          });
+          cssOutput += `}\n\n`;
+        }
+        if (n.children) walk(n.children);
+      });
+    };
+    walk(this.data);
+
+    const blob = new Blob([cssOutput], { type: 'text/css' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `style-${Date.now()}.css`;
+    a.click();
+  }
+  // ---------------------------------------------------------------
+
+
+  
 
   /**
    * JSONファイルを選択してデータを復元する
