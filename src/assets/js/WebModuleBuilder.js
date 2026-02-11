@@ -164,8 +164,16 @@ export class WebModuleBuilder {
     if (nodeData.type !== 'structure-box') {
       const handle = document.createElement('div');
       handle.className = 'preview-drag-handle';
-      handle.innerHTML = '≡'; // 3本線
-      el.appendChild(handle);
+      handle.innerHTML = '≡ 移動する'; 
+      
+      // --- 追加：handleをラップするdivを作成 ---
+      const handleWrapper = document.createElement('div');
+      handleWrapper.className = 'preview-handle-wrapper';
+      handleWrapper.appendChild(handle);
+      // --------------------------------------
+
+      // ラッパーをelに追加
+      el.appendChild(handleWrapper); 
       el.classList.add('is-preview-draggable');
     }
 
