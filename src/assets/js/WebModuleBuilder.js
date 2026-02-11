@@ -438,13 +438,15 @@ export class WebModuleBuilder {
     const wrap = document.createElement('div');
     wrap.className = 'field-input-wrap';
 
+    // 1. ラジオボタン（単一選択）
     if (type === 'radio') {
+      const groupName = `radio-${key}-${Math.random().toString(36).slice(2, 7)}`;
       options.forEach(opt => {
         const l = document.createElement('label');
         l.className = 'radio-label';
         const r = document.createElement('input');
         r.type = 'radio';
-        r.name = `radio-${key}-${Math.random().toString(36).slice(2, 7)}`;
+        r.name = groupName;
         r.value = opt.value;
         r.checked = (String(opt.value) === String(currentVal));
         r.onchange = () => onChange(opt.value);
@@ -452,24 +454,54 @@ export class WebModuleBuilder {
         l.append(opt.label);
         wrap.appendChild(l);
       });
-    } else if (type === 'checkbox') {
-      // checkboxの場合、options[0]がチェック時、options[1]が未チェック時のラベルと値
+    } 
+    // 2. チェックボックス（多項選択：複数チェック可）
+    else if (type === 'checkbox') {
+      const selectedValues = currentVal ? String(currentVal).split(',') : [];
+      options.forEach(opt => {
+        const l = document.createElement('label');
+        l.className = 'checkbox-label';
+        const c = document.createElement('input');
+        c.type = 'checkbox';
+        c.value = opt.value;
+        c.checked = selectedValues.includes(String(opt.value));
+        c.onchange = () => {
+          const checkedNodes = wrap.querySelectorAll('input[type="checkbox"]:checked');
+          const newVals = Array.from(checkedNodes).map(input => input.value);
+          onChange(newVals.join(','));
+        };
+        l.appendChild(c);
+        l.append(opt.label);
+        wrap.appendChild(l);
+      });
+    }
+    // 3. トグル（単一オンオフ：スイッチ形式）
+    else if (type === 'toggle') {
       const onData = options[0] || { label: "ON", value: "true" };
       const offData = options[1] || { label: "OFF", value: "false" };
 
       const l = document.createElement('label');
-      l.className = 'checkbox-label';
+      l.className = 'toggle-switch'; // CSSでスイッチ風に装飾することを想定
       const c = document.createElement('input');
       c.type = 'checkbox';
       c.checked = (String(currentVal) === String(onData.value));
-      c.onchange = (e) => onChange(e.target.checked ? onData.value : offData.value);
-      l.appendChild(c);
-      l.append(currentVal === onData.value ? onData.label : offData.label);
       
-      // 文字列をクリックでも切り替わるように
+      const statusLabel = document.createElement('span');
+      statusLabel.className = 'toggle-label';
+      statusLabel.textContent = c.checked ? onData.label : offData.label;
+
+      c.onchange = (e) => {
+        const isChecked = e.target.checked;
+        statusLabel.textContent = isChecked ? onData.label : offData.label;
+        onChange(isChecked ? onData.value : offData.value);
+      };
+
+      l.appendChild(c);
+      l.appendChild(statusLabel);
       wrap.appendChild(l);
-    } else {
-      // text, number, textarea (省略)
+    }
+    // 4. その他（text, textarea等）
+    else {
       const i = document.createElement(type === 'textarea' ? 'textarea' : 'input');
       if (type !== 'textarea') i.type = type;
       i.value = currentVal;
