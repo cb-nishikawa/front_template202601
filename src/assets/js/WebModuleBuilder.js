@@ -790,5 +790,63 @@ export class WebModuleBuilder {
 
 
 
+
+  /**
+   * 現在のデータをJSONファイルとしてダウンロードする
+   */
+  exportJSON() {
+    const jsonString = JSON.stringify(this.data, null, 2);
+    const blob = new Blob([jsonString], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `web-module-data-${new Date().getTime()}.json`;
+    a.click();
+    
+    URL.revokeObjectURL(url);
+  }
+  // ---------------------------------------------------------------
+
+
+
+  /**
+   * JSONファイルを選択してデータを復元する
+   */
+  importJSON() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    
+    input.onchange = (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const importedData = JSON.parse(event.target.result);
+          
+          if (confirm('現在の内容が上書きされます。よろしいですか？')) {
+            // マスターデータを更新
+            this.data = importedData;
+            // 履歴（Undo用）に保存
+            this.historyStack.push(JSON.parse(JSON.stringify(this.data)));
+            // 画面を再描画
+            this.syncView();
+          }
+        } catch (err) {
+          alert('JSONの解析に失敗しました。正しい形式のファイルを選択してください。');
+        }
+      };
+      reader.readAsText(file);
+    };
+    
+    input.click();
+  }
+  // ---------------------------------------------------------------
+
+  
+
 }
 

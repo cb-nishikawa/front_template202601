@@ -96,4 +96,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const builder = new WebModuleBuilder(options);
   builder.init();
+
+  document.getElementById('export-btn').onclick = () => builder.exportJSON();
+  document.getElementById('import-btn').onclick = () => builder.importJSON();
 });
