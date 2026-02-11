@@ -342,20 +342,20 @@ export class WebModuleBuilder {
     new Sortable(ul, {
       group: {
         name: 'nested',
+        pull: true,
         put: (to) => {
-          // 1. ルート判定の修正（?. を使い、存在しない場合にエラーにならないようにする）
-          // もし親要素が data-target="treeDisplay" を持っているならルートとして許可
-          const isRoot = to.el.parentElement?.getAttribute('data-target') === 'treeDisplay';
-          if (isRoot) return true;
+          // 1. ルート（最上位リスト）への移動許可
+          // syncView 内でルートの ul を生成する際、識別用のデータ属性を持たせると確実です
+          const isRootList = to.el.closest('[data-target="treeDisplay"]') !== null && 
+                             to.el.classList.contains('root-sortable-list');
+          
+          if (isRootList) return true;
 
-          // 2. ドロップゾーン（枠）判定
-          // 自分が入ろうとしているリスト(ul)の親である li を取得
+          // 2. 子要素（枠）への移動許可
           const parentLi = to.el.closest('.tree-item');
           if (parentLi) {
             const id = parentLi.getAttribute('data-id');
             const node = this.logic.findNodeById(this.data, id);
-            
-            // そのノードが 'structure-box' (ドロップゾーン) なら許可
             return node && node.type === 'structure-box';
           }
 
@@ -366,14 +366,19 @@ export class WebModuleBuilder {
       handle: '.drag-handle',
       fallbackOnBody: true,
       swapThreshold: 0.65,
-      // フィルターでボタン類をドラッグ対象外にする
       filter: '.moduleAddBtn, .editBtn, .deleteBtn, .blockAddBtn',
       preventOnFilter: false,
       onEnd: (evt) => {
         const { item, from, to, newIndex } = evt;
         const targetId = item.getAttribute('data-id');
+        
+        // --- 親IDの判定ロジックをより堅牢に ---
+        // ドロップ先の ul が 'root-sortable-list' クラスを持っていればルート(null)
+        const toId = to.classList.contains('root-sortable-list') 
+          ? null 
+          : to.closest('.tree-item')?.getAttribute('data-id') || null;
+
         const fromId = from.closest('.tree-item')?.getAttribute('data-id') || null;
-        const toId = to.closest('.tree-item')?.getAttribute('data-id') || null;
 
         this.moveDataNode(targetId, fromId, toId, newIndex);
         this.syncView();
@@ -680,7 +685,11 @@ export class WebModuleBuilder {
         </li>`.trim();
     };
 
-    displayInner.insertAdjacentHTML("beforeend", `<ul class="sortable-list">${tree.map(toHtml).join("")}</ul>`);
+    displayInner.insertAdjacentHTML("beforeend", `
+      <ul class="sortable-list root-sortable-list">
+        ${tree.map(toHtml).join("")}
+      </ul>
+    `);
 
     // --- ボタンのマウント ---
     displayInner.querySelectorAll('.tree-item').forEach(li => {
