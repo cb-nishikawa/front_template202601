@@ -22,8 +22,11 @@ export class WebModuleBuilder {
   init() {
     const previewRoot = document.querySelector(this.ctx.CONFIG.SELECTORS.CONTAINER_INNER);
     
-    // 既存のHTMLを一度だけJSONデータに変換してマスターデータとする
-    if (previewRoot && previewRoot.children.length > 0) {
+    // ★修正：まずローカルストレージからの読み込みを試みる
+    const hasSavedData = this.loadFromLocalStorage();
+
+    // 保存データがなかった場合のみ、既存のHTMLから読み込む
+    if (!hasSavedData && previewRoot && previewRoot.children.length > 0) {
       this.data = this.logic.buildModuleTree(previewRoot);
     }
 
@@ -55,6 +58,9 @@ export class WebModuleBuilder {
     });
 
     this.renderSidebar(this.data);
+
+    // ★追加：データが更新されるたびにローカルストレージに保存
+    this.saveToLocalStorage();
   }
   // ---------------------------------------------------------------
 
@@ -898,6 +904,55 @@ export class WebModuleBuilder {
   // ---------------------------------------------------------------
 
   
+
+
+  /**
+   * データをブラウザの localStorage に保存する
+   */
+  saveToLocalStorage() {
+    const dataString = JSON.stringify(this.data);
+    localStorage.setItem('web_module_builder_data', dataString);
+    console.log('データをローカルに保存しました');
+  }
+  // ---------------------------------------------------------------
+
+
+
+
+  /**
+   * localStorage からデータを復元する
+   */
+  loadFromLocalStorage() {
+    const savedData = localStorage.getItem('web_module_builder_data');
+    if (savedData) {
+      try {
+        this.data = JSON.parse(savedData);
+        this.syncView();
+        return true;
+      } catch (e) {
+        console.error("データの復元に失敗しました", e);
+      }
+    }
+    return false;
+  }
+  // ---------------------------------------------------------------
+
+
+
+
+  /**
+   * 保存されているデータを削除してリセットする
+   */
+  clearLocalStorage() {
+    if (confirm("保存されているデータをすべて削除して初期化しますか？")) {
+      localStorage.removeItem('web_module_builder_data');
+      location.reload(); // リロードして初期状態に戻す
+    }
+  }
+  // ---------------------------------------------------------------
+
+
+
 
 }
 
