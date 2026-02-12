@@ -1125,8 +1125,13 @@ export class WebModuleBuilder {
           }
 
           const addSlot = li.querySelector(`[data-add-for="${id}"]`);
-          if (addSlot && (node.isStructure || node.type === 'structure-box')) {
+          if (!addSlot) return;
+
+          // ✅ data-drop-zoneに当たる「箱（structure-box）」にだけ📦を出す
+          if (node.type === 'structure-box') {
             addSlot.appendChild(this.ui.createAddControls(this, node.id));
+          } else {
+            addSlot.innerHTML = ""; // 親（グリッドセット等）では何も出さない
           }
         });
 

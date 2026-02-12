@@ -64,18 +64,9 @@ export class WebModuleUI {
    * ツリーのトップ、または各行の追加用コントロールを生成する
    */
   createAddControls(builder, parentId = null) {
-    const optionsHtml = Object.entries(builder.ctx.ELEMENT_DEFS)
-      .map(([key, def]) => `<option value="${key}">${def.label}</option>`)
-      .join('');
-
-    // 💡 selectの直後にボタンを追加し、全体をflexで横並びにする
     const html = `
       <div class="add-controls-inner" style="display: inline-flex; align-items: center; gap: 4px;">
-        <select class="moduleAddBtn" data-tree-ignore="">
-          <option value="">＋</option>
-          ${optionsHtml}
-        </select>
-        <button type="button" class="sheet-open-inline-btn" title="一覧から追加" data-tree-ignore="" 
+        <button type="button" class="sheet-open-inline-btn" title="一覧から追加" data-tree-ignore
                 style="padding: 0 4px; cursor: pointer; border: 1px solid #ccc; background: #fff; border-radius: 4px; height: 24px; line-height: 22px;">
           📦
         </button>
@@ -86,23 +77,9 @@ export class WebModuleUI {
     temp.innerHTML = html;
     const container = temp.firstElementChild;
 
-    // --- イベント紐付け ---
-    
-    // 1. セレクトボックス（従来通り）
-    const select = container.querySelector('.moduleAddBtn');
-    select.onchange = (e) => {
-      const type = e.target.value;
-      if (type) {
-        builder.addModule(type, parentId);
-        e.target.value = "";
-      }
-    };
-
-    // 2. 📦 ボタン（ボトムシート起動）
     const sheetBtn = container.querySelector('.sheet-open-inline-btn');
     sheetBtn.onclick = () => {
-      // 💡 「どこに追加するか」を記録してからシートを開く
-      builder.pendingAddParentId = parentId; 
+      builder.pendingAddParentId = parentId;
       builder.openModuleSheet();
     };
 
@@ -340,15 +317,14 @@ export class WebModuleUI {
         <div class="sheet-overlay"></div>
         <div class="sheet-content">
           <div class="sheet-header">
-            <span class="sheet-title">モジュールを一括追加</span>
-            <button type="button" class="close-sheet">&times;</button>
+            <p class="sheet-title">モジュールを一括追加</p>
+            <div class="btns">
+              <button type="button" id="bulk-add-confirm-btn" class="add-btn" disabled>追加</button>
+              <button type="button" class="close-sheet">閉じる</button>
+            </div>
           </div>
           <div class="sheet-body">
             <div id="sheet-module-grid" class="module-grid"></div>
-          </div>
-          <div class="sheet-footer">
-            <div class="selected-info">選択中: <span id="selected-count">0</span> 件</div>
-            <button type="button" id="bulk-add-confirm-btn" class="bulk-add-btn" disabled>追加する</button>
           </div>
         </div>
       </div>`.trim();

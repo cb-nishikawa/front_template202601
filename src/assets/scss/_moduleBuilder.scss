@@ -635,6 +635,7 @@
 
 
 
+
 #open-sheet-btn {
   display: block;
   width: 100%;
@@ -646,59 +647,106 @@
   font-size: 11px;
 }
 
-/* ボトムシート基礎 */
-.bottom-sheet {
-  position: fixed;
-  inset: 0;
-  z-index: 9999;
-}
-.bottom-sheet.is-hidden { display: none; }
+    /* ボトムシート基礎 */
+    .bottom-sheet {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        &.is-hidden {
+            display: none;
+        }
+        &.is-active .sheet-content {
+            transform: translateY(0);
+        }
+        &:has(.sheet-item.is-selected) {
+            .sheet-header {
+                .btns {
+                    .add-btn {
+                        display: inline-block;
+                    }
+                }
+            }
+        }
 
-.sheet-overlay {
-  position: absolute;
-  inset: 0;
-  background: rgba(0,0,0,0.4);
-}
+        .sheet-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(0,0,0,0.4);
+        }
+        .sheet-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
 
-.sheet-content {
-  position: absolute;
-  bottom: 0; left: 0; right: 0;
-  background: white;
-  height: 60vh;
-  border-radius: 16px 16px 0 0;
-  display: flex;
-  flex-direction: column;
-  transform: translateY(100%);
-  transition: transform 0.3s ease;
-}
-.bottom-sheet.is-active .sheet-content { transform: translateY(0); }
+            width: 100%;
 
-/* グリッド表示 */
-.module-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-  gap: 12px;
-  padding: 20px;
-  overflow-y: auto;
-}
+            .btns {
+                button {
+                    padding: 8px 12px;
+                    font-size: 12px;
+                    border: none;
+                    border-radius: 4px;
+                    background: #3498db;
+                    color: white;
+                }
+                .add-btn {
+                    display: none;
+                }
+            }
+        }
 
-.sheet-item {
-  border: 1px solid #eee;
-  padding: 15px;
-  border-radius: 8px;
-  text-align: center;
-  position: relative;
-  cursor: pointer;
-}
-.sheet-item.is-selected {
-  border-color: #007bff;
-  background: #e7f1ff;
-}
-.item-badge {
-  display: none;
-  position: absolute;
-  top: 5px; right: 5px;
-  background: #007bff; color: white;
-  width: 18px; height: 18px; border-radius: 50%; font-size: 12px;
-}
-.sheet-item.is-selected .item-badge { display: block; }
+        .sheet-content {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            
+            position: absolute;
+            bottom: 0;
+            left:0;
+            right: 0;
+            height: fit-content;
+            padding: 40px;
+            background: white;
+            border-radius: 16px 16px 0 0;
+            
+            transform: translateY(100%);
+            transition: transform 0.3s ease;
+
+            .module-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+                gap: 10px;
+                overflow-y: auto;
+                .sheet-item {
+                    border: 1px solid #eee;
+                    padding: 15px;
+                    border-radius: 8px;
+                    text-align: center;
+                    position: relative;
+                    cursor: pointer;
+                    
+                    &.is-selected {
+                        border-color: #007bff;
+                        background: #e7f1ff;
+                        .item-badge {
+                            display: block;
+                        }
+                    }
+                    .item-badge {
+                        display: none;
+                        position: absolute;
+                        top: 5px; right: 5px;
+                        background: #007bff; color: white;
+                        width: 18px; height: 18px; border-radius: 50%; font-size: 12px;
+                    }
+                }
+            }
+        }
+    }
+
+    
+
+    
+    
+   
+
