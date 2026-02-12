@@ -192,28 +192,36 @@ export class WebModuleUI {
    * @returns {Element} 入力項目のDOM要素
    */
   // ---------------------------------------------------------------
+  /**
+   * スタイル項目の入力行（ラベル + 入力欄 + 単位 + 削除ボタン）を生成する
+   */
   createPropInputItem(item, fullVal = "") {
     let numVal = "", unitVal = "px";
     
     // 値の解析（数値と単位の分離）
     if (fullVal) {
-      const match = fullVal.match(/(-?\d+\.?\d*)(.*)/);
-      if (match) { 
-        numVal = match[1]; 
-        unitVal = match[2] || "px"; 
-      } else if (item.type === 'color') {
+      if (item.type === 'color') {
+        // カラーの場合はそのまま代入
         numVal = fullVal;
+      } else {
+        const match = fullVal.match(/(-?\d+\.?\d*)(.*)/);
+        if (match) { 
+          numVal = match[1]; 
+          unitVal = match[2] || "px"; 
+        }
       }
     }
 
     const units = ['px', '%', 'rem', 'vh', 'vw', 'auto'];
     const unitOptions = units.map(u => `<option ${unitVal === u ? 'selected' : ''}>${u}</option>`).join('');
 
+    // --- HTMLの生成 ---
+    // color の場合は type="text" に変更し、クラス名 c-in を付与
     const html = `
       <div class="prop-input-item" data-p="${item.prop}">
         <span class="prop-label">${this.escapeHtml(item.name)}</span>
         ${item.type === 'color' ? 
-          `<input type="color" value="${numVal || '#000000'}" data-tree-ignore>` : 
+          `<input type="text" class="c-in" value="${numVal || '#ffffff'}" placeholder="#ffffff" data-tree-ignore>` : 
           `<input type="number" class="n-in" value="${numVal}" data-tree-ignore>
            <select class="u-in" data-tree-ignore>${unitOptions}</select>`
         }
@@ -222,15 +230,37 @@ export class WebModuleUI {
 
     const div = this.parseHtml(html);
 
-    // 要素から現在の入力値を組み立てて返すヘルパー関数をプロパティとして持たせる
+    /**
+     * 要素から現在の入力値を組み立てて返すヘルパー
+     * WebModuleBuilder.js の updateStyles から呼び出されます
+     */
     div.getValue = () => {
-      if (item.type === 'color') return div.querySelector('input').value;
+      if (item.type === 'color') {
+        // テキストボックスの値をそのまま（#ffffff等）返す
+        return div.querySelector('.c-in').value;
+      }
       const n = div.querySelector('.n-in').value;
       const u = div.querySelector('.u-in').value;
-      return (u === 'auto') ? 'auto' : (n !== "" ? n + u : "");
+      
+      // autoの場合は数値なし、それ以外は数値+単位
+      if (u === 'auto') return 'auto';
+      return (n !== "") ? n + u : "";
     };
 
     return div;
+  }
+  // ---------------------------------------------------------------
+
+  
+
+  /**
+   * HTMLエスケープ（安全のため）
+   */
+  escapeHtml(str) {
+    if (!str) return "";
+    return str.replace(/[&<>"']/g, m => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[m]);
   }
   // ---------------------------------------------------------------
 

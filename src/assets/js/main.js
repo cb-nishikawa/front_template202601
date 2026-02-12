@@ -136,12 +136,12 @@ export const ELEMENT_DEFS = {
 export const STYLE_DEFS = [
   { prop: "width", name: "幅", type: "number" },
   { prop: "height", name: "高さ", type: "number" },
-  { prop: "bg-color", name: "背景色", type: "color" },
+  { prop: "background-color", name: "背景色", type: "color" },
   { prop: "opacity", name: "不透明度", type: "number", step: "0.1", min: "0", max: "1" },
-  { prop: "margin-top", name: "上余白", type: "number" },
-  { prop: "margin-bottom", name: "下余白", type: "number" },
-  { prop: "padding-top", name: "上内余白", type: "number" },
-  { prop: "padding-bottom", name: "下内余白", type: "number" },
+  { prop: "margin-top", name: "上間隔", type: "number" },
+  { prop: "margin-bottom", name: "下間隔", type: "number" },
+  { prop: "padding-top", name: "上余白", type: "number" },
+  { prop: "padding-bottom", name: "下余白", type: "number" },
   { prop: "font-size", name: "文字サイズ", type: "number" },
   { prop: "color", name: "文字色", type: "color" }
 ];

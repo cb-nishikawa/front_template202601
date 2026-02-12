@@ -70,6 +70,14 @@
                         position: relative;
                         /* 親要素と重ならないよう少しの内側余白を確保 */
                     }
+
+                    .preview-drag-handle {
+                        cursor: grab;
+                    }
+
+                    .preview-drag-handle:active {
+                        cursor: grabbing;
+                    }
                 }
 
                 
@@ -111,15 +119,13 @@
                     display: flex;
                     align-items: center;
                     justify-content: center;
-                    cursor: grab;
+                    
                     z-index: 1000;
                     border-radius: 3px;
                     font-size: 14px;
                 }
 
-                .preview-drag-handle:active {
-                    cursor: grabbing;
-                }
+                
 
                 /* @for ループで階層ごとに right を計算 */
                 $handle-width: 10px;
