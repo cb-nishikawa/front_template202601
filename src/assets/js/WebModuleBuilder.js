@@ -40,7 +40,7 @@ export class WebModuleBuilder {
 
 
   /**
-   * ツールバーのボタンをJSで生成して配置する
+   * ツールバーのボタンを生成し、指定のコンテナに配置する
    */
   renderToolbar() {
     const toolbar = document.getElementById('builder-toolbar');
@@ -48,456 +48,729 @@ export class WebModuleBuilder {
 
     toolbar.innerHTML = ""; // 初期化
 
-    // 1. エクスポートボタン
-    const exportBtn = document.createElement('button');
-    exportBtn.id = "export-btn";
-    exportBtn.textContent = "エクスポート";
-    exportBtn.onclick = () => this.exportJSON();
+    // 1. ボタンの定義リスト（将来の拡張がここだけで完結します）
+    const buttonConfigs = [
+      { id: "export-btn", text: "エクスポート", action: () => this.exportJSON() },
+      { id: "import-btn", text: "インポート", action: () => this.importJSON() },
+      { id: "clear-btn",  text: "初期化",      action: () => this.clearLocalStorage(), className: "btn-danger" }
+    ];
 
-    // 2. インポートボタン
-    const importBtn = document.createElement('button');
-    importBtn.id = "import-btn";
-    importBtn.textContent = "インポート";
-    importBtn.onclick = () => this.importJSON();
-
-    // 3. 保存データ削除（リセット）ボタン
-    const clearBtn = document.createElement('button');
-    clearBtn.id = "clear-btn";
-    clearBtn.textContent = "初期化";
-    clearBtn.className = "btn-danger"; // 赤色にするなどのクラス
-    clearBtn.onclick = () => this.clearLocalStorage();
-
-    // まとめてツールバーに追加
-    toolbar.appendChild(exportBtn);
-    toolbar.appendChild(importBtn);
-    toolbar.appendChild(clearBtn);
+    // 2. 定義に基づいてボタンを一括生成
+    buttonConfigs.forEach(config => {
+      const btn = this._createToolbarButton(config);
+      toolbar.appendChild(btn);
+    });
   }
+  // ---------------------------------------------------------------
+
+
+      /**
+       * 単一のツールバーボタンを生成する
+       * @param {Object} config - ボタンの設定オブジェクト
+       * @param {string} config.id - ボタンのID
+       * @param {string} config.text - 表示テキスト
+       * @param {Function} config.action - クリック時の実行関数
+       * @param {string} [config.className] - 追加するクラス名
+       * @returns {HTMLButtonElement} 生成されたボタン要素
+       * @private
+       */
+      _createToolbarButton(config) {
+        const btn = document.createElement('button');
+        btn.id = config.id;
+        btn.textContent = config.text;
+        
+        if (config.className) {
+          btn.classList.add(config.className);
+        }
+        
+        btn.onclick = (e) => {
+          e.preventDefault();
+          config.action();
+        };
+
+        return btn;
+      }
+      // ---------------------------------------------------------------
+
+
   // ---------------------------------------------------------------
 
 
 
   /**
-   * JSONデータ（this.data）を元に、プレビューDOMとサイドバーを一斉更新する
+   * JSONデータ（this.data）を元に、プレビューDOMとサイドバーを一斉更新し、保存を行う
+   * @param {Object[]|null} [treeData=null] - 外部から提供される新しいツリーデータ
    */
   syncView(treeData = null) {
     const previewRoot = document.querySelector(this.ctx.CONFIG.SELECTORS.CONTAINER_INNER);
     if (!previewRoot) return;
 
-    if (treeData) {
-      this.data = JSON.parse(JSON.stringify(treeData));
-    } else if (this.data.length === 0) {
-      // 本当に空の時だけDOMから吸い上げる
-      this.data = this.logic.buildModuleTree(previewRoot);
-    }
+    // 1. 内部データの正規化・更新
+    this._refreshInternalData(treeData, previewRoot);
 
-    previewRoot.innerHTML = "";
-    this.data.forEach(node => {
-      const el = this.renderNode(node);
-      if (el) previewRoot.appendChild(el);
-    });
+    // 2. プレビューエリア（中央）の再描画
+    this._renderPreview(previewRoot);
 
+    // 3. サイドバー（左側）の再描画
     this.renderSidebar(this.data);
 
-    // ★追加：データが更新されるたびにローカルストレージに保存
+    // 4. データの永続化
     this.saveToLocalStorage();
 
+    // 5. インタラクション（ドラッグ＆ドロップ）の再初期化
     this.initPreviewSortable();
   }
   // ---------------------------------------------------------------
 
 
 
-  /**
-   * JSONデータから実DOM（プレビュー用）を生成する
-   */
-  renderNode(nodeData, parentDef = null) {
-    // 1. structure-box（グリッドの枠など）の描画
-    if (nodeData.type === 'structure-box') {
-      let wrapper;
-      if (parentDef) {
-        const temp = document.createElement('div');
-        temp.innerHTML = parentDef.template;
-        const dzTemplate = temp.querySelector(`[${this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE}]`);
-        if (dzTemplate) wrapper = dzTemplate.cloneNode(false);
+      /**
+       * 引数の有無や現在の状態に応じて、this.data を最新状態に同期する
+       * @param {Object[]|null} treeData - 新しく提供されたツリーデータ
+       * @param {HTMLElement} previewRoot - 現在のプレビューDOM
+       * @private
+       */
+      _refreshInternalData(treeData, previewRoot) {
+        if (treeData) {
+          // 参照を切るためにディープコピー
+          this.data = JSON.parse(JSON.stringify(treeData));
+        } else if (this.data.length === 0) {
+          // データが空の場合はDOMから構造を解析して復元
+          this.data = this.logic.buildModuleTree(previewRoot);
+        }
       }
-      if (!wrapper) wrapper = document.createElement('div');
-      wrapper.setAttribute(this.ctx.CONFIG.ATTRIBUTES.TREE_ID, nodeData.id);
-      if (nodeData.children) {
-        nodeData.children.forEach(child => {
-          const childDom = this.renderNode(child);
-          if (childDom) wrapper.appendChild(childDom);
-        });
-      }
-      return wrapper;
-    }
+      // ---------------------------------------------------------------
 
-    // 2. 通常モジュールの描画
-    const def = this.ctx.ELEMENT_DEFS[nodeData.type];
-    if (!def) return null;
 
-    let html = def.template.replace(/\$tag/g, def.tag);
-    const attrs = nodeData.attrs || {};
-
-    // --- 連想配列 schema に基づき、$変数（$grid, $html等）を一括置換 ---
-    if (def.schema) {
-      Object.entries(def.schema).forEach(([key, config]) => {
-        if (config.isContent) {
-          // $html 等のタグ内テキストの置換
-          const val = (nodeData.content !== undefined && nodeData.content !== "") 
-                      ? nodeData.content : config.default;
-          html = html.split(`$${key}`).join(val);
-        } else {
-          // $src, $href, $grid 等の属性値の置換
-          const val = (attrs[key] !== undefined && attrs[key] !== "") 
-                      ? attrs[key] : config.default;
-          html = html.split(`$${key}`).join(val);
-        }
-      });
-    }
-
-    const finalTemp = document.createElement('div');
-    finalTemp.innerHTML = html.trim();
-    const el = finalTemp.firstElementChild;
-    el.setAttribute(this.ctx.CONFIG.ATTRIBUTES.TREE_ID, nodeData.id);
-    el.setAttribute(this.ctx.CONFIG.ATTRIBUTES.MODULE, nodeData.type);
-
-   // --- 【修正ここから】ターゲット別のスタイル復元 ---
-   if (nodeData.attrs) {
-      // ターゲット（selector）ごとに、個別設定と自由設定を分けて処理する
-      const targetMap = {};
-
-      Object.keys(nodeData.attrs).forEach(key => {
-        if (!key.includes(':')) return;
-        const [selector, prop] = key.split(':');
-        if (!targetMap[selector]) targetMap[selector] = { individuals: [], custom: "" };
-
-        if (prop === 'custom-css') {
-          targetMap[selector].custom = nodeData.attrs[key];
-        } else {
-          targetMap[selector].individuals.push({ prop, val: nodeData.attrs[key] });
-        }
-      });
-
-      // まとめたデータをDOMに適用
-      Object.keys(targetMap).forEach(selector => {
-        const targetEl = selector === "" ? el : el.querySelector(selector);
-        if (targetEl) {
-          // 1. 個別設定を先に適用
-          targetMap[selector].individuals.forEach(item => {
-            const safeSelector = selector.replace(/\./g, '-');
-            const uniqueVar = `--id-${nodeData.id}${safeSelector}-${item.prop}`;
-            targetEl.style.setProperty(uniqueVar, item.val);
-            targetEl.style.setProperty(item.prop, `var(${uniqueVar})`);
-          });
-
-          // 2. 最後に自由入力を結合（これで優先順位が最強になる）
-          if (targetMap[selector].custom) {
-            targetEl.style.cssText += "; " + targetMap[selector].custom;
-            // パネルを開いた時のために、前回値として保存
-            targetEl.dataset.lastCustomCss = targetMap[selector].custom;
-          }
-        }
-      });
-    }
-
-    // --- 【追加】プレビュー用ドラッグハンドルの挿入 ---
-    // structure-box（枠）以外にはハンドルを付ける
-    if (nodeData.type !== 'structure-box') {
-      const handle = document.createElement('div');
-      handle.className = 'preview-drag-handle';
-      handle.innerHTML = '≡ 移動する'; 
-      
-      // --- 追加：handleをラップするdivを作成 ---
-      const handleWrapper = document.createElement('div');
-      handleWrapper.className = 'preview-handle-wrapper';
-      handleWrapper.appendChild(handle);
-      // --------------------------------------
-
-      // ラッパーをelに追加
-      el.appendChild(handleWrapper); 
-      el.classList.add('is-preview-draggable');
-    }
-
-    // --- スタイルの復元 ---
-    if (nodeData.styles) {
-      const pref = nodeData.type?.startsWith('m-') ? "module" : "layout";
-      Object.keys(nodeData.styles).forEach(prop => {
-        el.style.setProperty(`--${pref}-${prop}`, nodeData.styles[prop]);
-      });
-    }
-
-    el.setAttribute(this.ctx.CONFIG.ATTRIBUTES.TREE_ID, nodeData.id);
-    el.setAttribute(this.ctx.CONFIG.ATTRIBUTES.MODULE, nodeData.type);
-
-    // 3. 入れ子（子要素）の描画
-    const dzAttr = this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE;
-    const dz = el.hasAttribute(dzAttr) ? el : el.querySelector(`[${dzAttr}]`);
-    if (dz) {
-      dz.innerHTML = "";
-      if (nodeData.children && nodeData.children.length > 0) {
-        nodeData.children.forEach(childData => {
-          const childDom = this.renderNode(childData, def);
-          if (childDom) {
-            if (dz === el) { el.appendChild(childDom); } 
-            else { dz.parentElement.appendChild(childDom); }
+      /**
+       * this.data に基づき、プレビューエリアのDOMをゼロから構築する
+       * @param {HTMLElement} previewRoot - 描画先のコンテナ
+       * @private
+       */
+      _renderPreview(previewRoot) {
+        previewRoot.innerHTML = "";
+        this.data.forEach(node => {
+          const el = this.renderNode(node);
+          if (el) {
+            previewRoot.appendChild(el);
           }
         });
-        if (dz !== el) dz.remove();
       }
-    }
-    return el;
-  }
+      // ---------------------------------------------------------------
+
+
   // ---------------------------------------------------------------
 
 
 
   /**
-   * モジュール追加時の初期データ（JSON）を生成する
+   * JSONデータ（ツリー構造）から実際のDOM要素を再帰的に生成するメインメソッド
+   * @param {Object} nodeData - レンダリング対象のノードデータ
+   * @param {Object|null} [parentDef=null] - 親要素の定義（structure-boxの枠生成用）
+   * @returns {HTMLElement|null} 生成されたDOM要素
+   */
+  renderNode(nodeData, parentDef = null) {
+    // 1. 特殊な枠組み (structure-box) のレンダリング
+    if (nodeData.type === 'structure-box') {
+      return this._renderStructureBox(nodeData, parentDef);
+    }
+
+    // 2. モジュール定義の取得
+    const def = this.ctx.ELEMENT_DEFS[nodeData.type];
+    if (!def) return null;
+
+    // 3. ベースとなる要素の生成と変数置換
+    const el = this._createBaseElement(nodeData, def);
+
+    // 4. スタイルの適用（個別プロパティ ＆ 自由入力CSS）
+    this._applyNodeStyles(el, nodeData);
+
+    // 5. プレビュー用UI（ドラッグハンドル等）の挿入
+    this._insertPreviewUI(el, nodeData);
+
+    // 6. 子要素（入れ子）の再帰レンダリング
+    this._renderChildren(el, nodeData, def);
+
+    return el;
+  }
+  // ---------------------------------------------------------------
+
+
+      /**
+       * モジュール定義のテンプレートからベースDOMを生成し、変数を置換する
+       * @param {Object} nodeData - ノードデータ
+       * @param {Object} def - ELEMENT_DEFS内の定義
+       * @returns {HTMLElement} 生成されたDOM要素
+       * @private
+       */
+      _createBaseElement(nodeData, def) {
+        let html = def.template.replace(/\$tag/g, def.tag);
+        const attrs = nodeData.attrs || {};
+
+        // schemaに基づき $html や $src などを置換
+        if (def.schema) {
+          Object.entries(def.schema).forEach(([key, config]) => {
+            const val = (config.isContent)
+              ? (nodeData.content !== undefined && nodeData.content !== "" ? nodeData.content : config.default)
+              : (attrs[key] !== undefined && attrs[key] !== "" ? attrs[key] : config.default);
+            html = html.split(`$${key}`).join(val);
+          });
+        }
+
+        const finalTemp = document.createElement('div');
+        finalTemp.innerHTML = html.trim();
+        const el = finalTemp.firstElementChild;
+        
+        el.setAttribute(this.ctx.CONFIG.ATTRIBUTES.TREE_ID, nodeData.id);
+        el.setAttribute(this.ctx.CONFIG.ATTRIBUTES.MODULE, nodeData.type);
+        
+        return el;
+      }
+      // ---------------------------------------------------------------
+
+
+
+      /**
+       * ノードの属性データに基づき、個別プロパティと自由CSSをDOMに適用する
+       * @param {HTMLElement} el - 対象のDOM要素
+       * @param {Object} nodeData - ノードデータ
+       * @private
+       */
+      _applyNodeStyles(el, nodeData) {
+        if (!nodeData.attrs) return;
+
+        // ターゲット(selector)ごとにスタイルを分類
+        const targetMap = {};
+        Object.keys(nodeData.attrs).forEach(key => {
+          if (!key.includes(':')) return;
+          const [selector, prop] = key.split(':');
+          if (!targetMap[selector]) targetMap[selector] = { individuals: [], custom: "" };
+
+          if (prop === 'custom-css') {
+            targetMap[selector].custom = nodeData.attrs[key];
+          } else {
+            targetMap[selector].individuals.push({ prop, val: nodeData.attrs[key] });
+          }
+        });
+
+        // 各ターゲットに対してスタイルを適用
+        Object.keys(targetMap).forEach(selector => {
+          const targetEl = selector === "" ? el : el.querySelector(selector);
+          if (targetEl) {
+            // 1. 個別設定を適用（CSS変数経由）
+            targetMap[selector].individuals.forEach(item => {
+              const safeSelector = selector.replace(/\./g, '-');
+              const uniqueVar = `--id-${nodeData.id}${safeSelector}-${item.prop}`;
+              targetEl.style.setProperty(uniqueVar, item.val);
+              targetEl.style.setProperty(item.prop, `var(${uniqueVar})`);
+            });
+
+            // 2. 自由CSSを最後に結合（最強の優先順位を確保）
+            if (targetMap[selector].custom) {
+              targetEl.style.cssText += "; " + targetMap[selector].custom;
+              // 再編集時のために値を保持
+              targetEl.dataset.lastCustomCss = targetMap[selector].custom;
+            }
+          }
+        });
+
+        // 旧来のstylesプロパティがある場合の互換性維持
+        if (nodeData.styles) {
+          const pref = nodeData.type?.startsWith('m-') ? "module" : "layout";
+          Object.keys(nodeData.styles).forEach(prop => {
+            el.style.setProperty(`--${pref}-${prop}`, nodeData.styles[prop]);
+          });
+        }
+      }
+      // ---------------------------------------------------------------
+
+
+
+      /**
+       * 編集画面用のドラッグハンドル等のUI要素を挿入する
+       * @param {HTMLElement} el - 対象のDOM要素
+       * @param {Object} nodeData - ノードデータ
+       * @private
+       */
+      _insertPreviewUI(el, nodeData) {
+        // 構造枠（structure-box）にはハンドルを表示しない
+        if (nodeData.type === 'structure-box') return;
+
+        // ハンドルの生成
+        const handleWrapper = document.createElement('div');
+        handleWrapper.className = 'preview-handle-wrapper';
+        handleWrapper.innerHTML = '<div class="preview-drag-handle">≡ 移動する</div>';
+        
+        el.appendChild(handleWrapper); 
+        
+        // 💡 クラスではなく data 属性を付与
+        el.setAttribute('data-preview-draggable', 'true');
+      }
+      // ---------------------------------------------------------------
+
+
+
+
+      /**
+       * 子要素（DropZone）を探し、再帰的にrenderNodeを呼び出して子ノードを描画する
+       * @param {HTMLElement} el - 親となるDOM要素
+       * @param {Object} nodeData - ノードデータ
+       * @param {Object} def - 要素の定義
+       * @private
+       */
+      _renderChildren(el, nodeData, def) {
+        const dzAttr = this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE;
+        const dz = el.hasAttribute(dzAttr) ? el : el.querySelector(`[${dzAttr}]`);
+        
+        if (dz) {
+          dz.innerHTML = "";
+          if (nodeData.children && nodeData.children.length > 0) {
+            nodeData.children.forEach(childData => {
+              const childDom = this.renderNode(childData, def);
+              if (childDom) {
+                if (dz === el) { 
+                  el.appendChild(childDom); 
+                } else { 
+                  dz.parentElement.appendChild(childDom); 
+                }
+              }
+            });
+            // テンプレート用のダミーDropZone属性がある場合は削除
+            if (dz !== el) dz.remove();
+          }
+        }
+      }
+      // ---------------------------------------------------------------
+
+
+
+
+      /**
+       * structure-box（グリッドシステム等の枠組み）をレンダリングする
+       * @param {Object} nodeData - ノードデータ
+       * @param {Object|null} parentDef - 親の定義
+       * @returns {HTMLElement} 生成された枠組み要素
+       * @private
+       */
+      _renderStructureBox(nodeData, parentDef) {
+        let wrapper;
+        if (parentDef) {
+          const temp = document.createElement('div');
+          temp.innerHTML = parentDef.template;
+          const dzTemplate = temp.querySelector(`[${this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE}]`);
+          if (dzTemplate) wrapper = dzTemplate.cloneNode(false);
+        }
+        if (!wrapper) wrapper = document.createElement('div');
+        
+        wrapper.setAttribute(this.ctx.CONFIG.ATTRIBUTES.TREE_ID, nodeData.id);
+        
+        if (nodeData.children) {
+          nodeData.children.forEach(child => {
+            const childDom = this.renderNode(child);
+            if (childDom) wrapper.appendChild(childDom);
+          });
+        }
+        return wrapper;
+      }
+
+      // ---------------------------------------------------------------
+
+
+      
+  // ---------------------------------------------------------------
+
+
+
+  /**
+   * 指定されたモジュールIDに基づき、初期状態のJSONデータ（ノード）を生成する
+   * @param {string} defId - ELEMENT_DEFS に定義されているモジュールID (例: 'm-btn01')
+   * @returns {Object|null} 生成された初期ノードデータ、または定義がない場合は null
    */
   createInitialData(defId) {
     const def = this.ctx.ELEMENT_DEFS[defId];
     if (!def) return null;
 
-    // テンプレートから初期ラベルを抽出（data-tree-view があればその初期値を採用）
-    const temp = document.createElement('div');
-    temp.innerHTML = def.template;
-    const treeViewEl = temp.querySelector('[data-tree-view]');
-    
-    let initialLabel = def.label;
-    if (treeViewEl) {
-      // $html などの変数を、data-edit の初期値で置換してラベルにする
-      const editConf = treeViewEl.getAttribute('data-edit');
-      if (editConf && editConf.includes('html:')) {
-        const parts = editConf.split(';').find(c => c.trim().startsWith('html:')).split(':');
-        initialLabel = parts.slice(2).join(':') || def.label;
-      }
-    }
+    // 1. 動的な初期ラベルの決定
+    const initialLabel = this._extractInitialLabel(def);
 
+    // 2. ベースとなるノードの構築
     const newNode = {
-      id: "id-" + Math.random().toString(36).slice(2, 11),
+      id: this._generateUniqueId(),
       type: defId,
-      label: initialLabel, // ここで動的なラベルをセット
+      label: initialLabel,
       children: [],
       isStructure: def.template.includes(this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE)
     };
 
-    // 構造体（コンテナ）の場合の処理
-    const dzEl = temp.querySelector(`[${this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE}]`);
-    if (dzEl) {
-      const dzNode = {
-        id: "id-" + Math.random().toString(36).slice(2, 11),
-        type: 'structure-box',
-        label: dzEl.getAttribute(this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE) || "枠",
-        isStructure: true,
-        children: [this.createInitialData('m-text01')] // 初期テキスト
-      };
-      newNode.children.push(dzNode);
-    }
+    // 3. コンテナ（DROP_ZONE）を持つ場合の構造体生成
+    this._attachInitialStructure(newNode, def);
 
     return newNode;
   }
   // ---------------------------------------------------------------
 
 
-
-  /**
-   * 指定した場所に新しいモジュールを追加する（データ操作版）
-   */
-  addNewModule(node, defId) {
-    // 1. 再帰的に初期データ（JSON）を作成
-    const newNode = this.createInitialData(defId);
-    if (!newNode) return;
-
-    if (!node) {
-      // ルートに追加
-      this.data.push(newNode);
-    } else {
-      // 特定の親ノードを探して children に追加
-      const parentNode = this.logic.findNodeById(this.data, node.id);
-      if (parentNode) {
-        // 親が children を持てる構造か確認（念のため）
-        if (!parentNode.children) parentNode.children = [];
-        parentNode.children.push(newNode);
+      /**
+       * テンプレートから最適な初期ラベルを抽出する
+       * @param {Object} def - モジュール定義
+       * @returns {string} 抽出されたラベル文字列
+       * @private
+       */
+      _extractInitialLabel(def) {
+        const temp = document.createElement('div');
+        temp.innerHTML = def.template;
+        const treeViewEl = temp.querySelector('[data-tree-view]');
+        
+        if (treeViewEl) {
+          const editConf = treeViewEl.getAttribute('data-edit');
+          // data-edit="html:propName:初期テキスト" の形式からテキスト部分を抽出
+          if (editConf && editConf.includes('html:')) {
+            const configPart = editConf.split(';').find(c => c.trim().startsWith('html:'));
+            if (configPart) {
+              const parts = configPart.split(':');
+              // parts[2] 以降が初期テキスト
+              return parts.slice(2).join(':') || def.label;
+            }
+          }
+        }
+        return def.label;
       }
-    }
+      // ---------------------------------------------------------------
 
-    // 2. データを更新したので再描画
-    this.syncView();
-  }
+
+
+      /**
+       * モジュールがコンテナ（DropZone）を持つ場合、内部に structure-box を自動生成する
+       * @param {Object} newNode - 生成中のノードデータ
+       * @param {Object} def - モジュール定義
+       * @private
+       */
+      _attachInitialStructure(newNode, def) {
+        const temp = document.createElement('div');
+        temp.innerHTML = def.template;
+        const dzEl = temp.querySelector(`[${this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE}]`);
+        
+        if (dzEl) {
+          const dzNode = {
+            id: this._generateUniqueId(),
+            type: 'structure-box',
+            label: dzEl.getAttribute(this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE) || "枠",
+            isStructure: true,
+            // 必要に応じて初期状態で中に配置するモジュールを設定
+            children: [this.createInitialData('m-text01')] 
+          };
+          newNode.children.push(dzNode);
+        }
+      }
+      // ---------------------------------------------------------------
+
+
+
+      /**
+       * ランダムなユニークIDを生成する
+       * @returns {string} id-xxxxxx 形式の文字列
+       * @private
+       */
+      _generateUniqueId() {
+        return "id-" + Math.random().toString(36).slice(2, 11);
+      }
+      // ---------------------------------------------------------------
+
+
   // ---------------------------------------------------------------
 
 
 
   /**
-   * JSONデータからノードを削除する
+   * 指定したノードまたはルートに新しいモジュールを追加する
+   * @param {Object|null} parentNodeData - 追加先の親ノードデータ。ルートに追加する場合は null
+   * @param {string} defId - 追加するモジュールの定義ID (例: 'm-btn01')
+   */
+  addNewModule(parentNodeData, defId) {
+    // 1. 追加するノードの初期データを生成
+    const newNode = this.createInitialData(defId);
+    if (!newNode) return;
+
+    // 2. 既存のデータツリーへ新しいノードを統合
+    this._integrateNodeToTree(newNode, parentNodeData);
+
+    // 3. 視覚的・データの同期
+    this.syncView();
+  }
+  // ---------------------------------------------------------------
+
+
+      /**
+       * 新しいノードをデータツリーの適切な位置（ルートまたは親の直下）に挿入する
+       * @param {Object} newNode - 挿入する新しいノード
+       * @param {Object|null} parentNodeData - 親となるノードデータ
+       * @private
+       */
+      _integrateNodeToTree(newNode, parentNodeData) {
+        if (!parentNodeData) {
+          // 親の指定がない場合はルート（最上位）に追加
+          this.data.push(newNode);
+        } else {
+          // IDを元に、現在のデータツリー内から最新の親ノード参照を探す
+          const actualParent = this.logic.findNodeById(this.data, parentNodeData.id);
+          if (actualParent) {
+            // 親が children を持っているか確認し、配列にプッシュ
+            if (!Array.isArray(actualParent.children)) {
+              actualParent.children = [];
+            }
+            actualParent.children.push(newNode);
+          }
+        }
+      }
+      // ---------------------------------------------------------------
+
+
+  // ---------------------------------------------------------------
+
+
+
+  /**
+   * 指定したIDのモジュールをデータツリーから削除する
+   * @param {string} id - 削除対象のノードID
    */
   deleteModule(id) {
-    if (!confirm("削除しますか？")) return;
+    // 1. ユーザーへの確認（UIの責務）
+    if (!this._confirmDeletion()) return;
 
-    const removeFromTree = (list, targetId) => {
-      const index = list.findIndex(item => item.id === targetId);
-      if (index !== -1) {
-        list.splice(index, 1);
-        return true;
-      }
-      return list.some(item => item.children && removeFromTree(item.children, targetId));
-    };
+    // 2. データツリーからの実削除（データの責務）
+    const isDeleted = this._performDeleteFromTree(this.data, id);
 
-    if (removeFromTree(this.data, id)) {
+    // 3. 削除成功時のみ画面を同期
+    if (isDeleted) {
       this.syncView();
     }
   }
   // ---------------------------------------------------------------
 
 
+      /**
+       * 削除の確認ダイアログを表示する
+       * @returns {boolean} ユーザーが同意した場合は true
+       * @private
+       */
+      _confirmDeletion() {
+        return confirm("このモジュールを削除しますか？内部の子要素もすべて削除されます。");
+      }
+      // ---------------------------------------------------------------
+
+
+      /**
+       * ツリー構造（配列）から指定したIDを持つ要素を再帰的に探し出し、削除する
+       * @param {Object[]} list - 探索対象のノード配列
+       * @param {string} targetId - 削除したいID
+       * @returns {boolean} 削除が成功した場合は true
+       * @private
+       */
+      _performDeleteFromTree(list, targetId) {
+        // 直近の階層から検索
+        const index = list.findIndex(item => item.id === targetId);
+        
+        if (index !== -1) {
+          // 対象が見つかったらその場で切り取る
+          list.splice(index, 1);
+          return true;
+        }
+
+        // 見つからなければ子要素（children）を再帰的に探索
+        return list.some(item => {
+          if (item.children && item.children.length > 0) {
+            return this._performDeleteFromTree(item.children, targetId);
+          }
+          return false;
+        });
+      }
+      // ---------------------------------------------------------------
+
+
+  // ---------------------------------------------------------------
+
+
 
   /**
-   * グリッドなどの枠を1つ増やす（データ操作版）
+   * グリッドなどの親要素内に、新しい枠（structure-box）を1つ追加する
+   * @param {Object} node - 枠を追加する対象の親ノード
    */
   fastAddFrame(node) {
+    // 1. 最新の親ノード参照をツリーから取得
     const parentNode = this.logic.findNodeById(this.data, node.id);
-    const def = this.ctx.ELEMENT_DEFS[parentNode.type];
-    
-    // テンプレートからドロップゾーンの情報を再取得
-    const tempDiv = document.createElement('div');
-    tempDiv.innerHTML = def.template;
-    const dzEl = tempDiv.querySelector(`[${this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE}]`);
+    if (!parentNode) return;
 
-    const newDZNode = {
-      id: "id-" + Math.random().toString(36).slice(2, 11),
-      type: 'structure-box',
-      label: dzEl ? dzEl.getAttribute(this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE) : "枠",
-      isStructure: true,
-      children: []
-    };
+    // 2. 親の定義に基づき、新しい枠（structure-box）データを生成
+    const newFrameNode = this._createNewFrameData(parentNode);
 
-    // 枠の中にデフォルトモジュールを入れる
-    const childModule = this.createInitialData(def.default);
-    if (childModule) newDZNode.children.push(childModule);
+    // 3. 親の children 配列に追加
+    if (!Array.isArray(parentNode.children)) parentNode.children = [];
+    parentNode.children.push(newFrameNode);
 
-    parentNode.children.push(newDZNode);
+    // 4. 全体を同期して反映
     this.syncView();
   }
+
+      /**
+       * 親ノードの定義からドロップゾーンの情報を抽出し、新しい枠の初期データを生成する
+       * @param {Object} parentNode - 親ノードデータ
+       * @returns {Object} 生成された structure-box ノード
+       * @private
+       */
+      _createNewFrameData(parentNode) {
+        const def = this.ctx.ELEMENT_DEFS[parentNode.type];
+        
+        // テンプレートからドロップゾーン（DZ）の設定を解析
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = def?.template || "";
+        const dzEl = tempDiv.querySelector(`[${this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE}]`);
+
+        const newFrame = {
+          id: this._generateUniqueId(),
+          type: 'structure-box',
+          label: dzEl ? dzEl.getAttribute(this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE) : "枠",
+          isStructure: true,
+          children: []
+        };
+
+        // 親の定義に default モジュールが指定されていれば、初期要素として中に入れる
+        if (def && def.default) {
+          const childModule = this.createInitialData(def.default);
+          if (childModule) {
+            newFrame.children.push(childModule);
+          }
+        }
+
+        return newFrame;
+      }
+      // ---------------------------------------------------------------
+
+
+
   // ---------------------------------------------------------------
 
 
 
   /**
-   * 並び替えライブラリ(SortableJS)を初期化する
-   * @param {Element} ul - 対象のリックリスト要素
+   * サイドバーのツリー表示用 Sortable を初期化する
+   * @param {HTMLElement} ul - 対象のリスト要素
    */
-  // ---------------------------------------------------------------
   initSortable(ul) {
     new Sortable(ul, {
+      ...this._getCommonSortableOptions('.drag-handle'),
       group: {
         name: 'nested',
         pull: true,
-        put: (to) => {
-          // 1. ルート（最上位リスト）への移動許可
-          // syncView 内でルートの ul を生成する際、識別用のデータ属性を持たせると確実です
-          const isRootList = to.el.closest('[data-target="treeDisplay"]') !== null && 
-                             to.el.classList.contains('root-sortable-list');
-          
-          if (isRootList) return true;
-
-          // 2. 子要素（枠）への移動許可
-          const parentLi = to.el.closest('.tree-item');
-          if (parentLi) {
-            const id = parentLi.getAttribute('data-id');
-            const node = this.logic.findNodeById(this.data, id);
-            return node && node.type === 'structure-box';
-          }
-
-          return false;
-        }
+        put: (to) => this._canPutInTree(to)
       },
-      animation: 150,
-      handle: '.drag-handle',
-      fallbackOnBody: true,
-      swapThreshold: 0.65,
       filter: '.moduleAddBtn, .editBtn, .deleteBtn, .blockAddBtn',
-      preventOnFilter: false,
-      onEnd: (evt) => {
-        const { item, from, to, newIndex } = evt;
-        const targetId = item.getAttribute('data-id');
-        
-        // --- 親IDの判定ロジックをより堅牢に ---
-        // ドロップ先の ul が 'root-sortable-list' クラスを持っていればルート(null)
-        const toId = to.classList.contains('root-sortable-list') 
-          ? null 
-          : to.closest('.tree-item')?.getAttribute('data-id') || null;
-
-        const fromId = from.closest('.tree-item')?.getAttribute('data-id') || null;
-
-        this.moveDataNode(targetId, fromId, toId, newIndex);
-        this.syncView();
-      }
+      onEnd: (evt) => this._onDragEnd(evt, 'sidebar')
     });
   }
   // ---------------------------------------------------------------
 
 
-
-
   /**
-   * プレビューDOM側の並び替えを有効にする
+   * プレビューDOM側の Sortable を有効にする
    */
   initPreviewSortable() {
-    // ドラッグ無効時は何もしない
     if (!this.previewDragEnabled) return;
 
     const previewRoot = document.querySelector(this.ctx.CONFIG.SELECTORS.CONTAINER_INNER);
     if (!previewRoot) return;
 
-    // ルートと全ドロップゾーンを対象にする
-    const containers = [
-      previewRoot,
-      ...Array.from(document.querySelectorAll(`[${this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE}]`))
-    ];
+    const containers = [previewRoot, ...Array.from(document.querySelectorAll(`[${this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE}]`))];
 
     containers.forEach(container => {
-      // 既存のインスタンスがあれば一旦破棄してクリーンにする（重複バインド防止）
-      if (container._sortableInstance) {
-        container._sortableInstance.destroy();
-      }
+      // 重複バインド防止
+      if (container._sortableInstance) container._sortableInstance.destroy();
 
       container._sortableInstance = new Sortable(container, {
-        // グループ設定をオブジェクト形式にし、pull/putを明示する
-        group: {
-          name: 'preview-nested',
-          pull: true, // 他のリストへ出せる
-          put: true   // 他のリストから受け取れる（これがルート移動に必須）
-        },
-        animation: 150,
-        handle: '.preview-drag-handle',
-        fallbackOnBody: true,
-        swapThreshold: 0.65,
-        invertSwap: true, // 階層間の移動をスムーズにする
-
-        onEnd: (evt) => {
-          const { item, from, to, newIndex } = evt;
-          const treeIdAttr = this.ctx.CONFIG.ATTRIBUTES.TREE_ID;
-          const targetId = item.getAttribute(treeIdAttr);
-          
-          // --- 親ID判定のロジックを修正 ---
-          // to（ドロップ先）が previewRoot そのものならルート（null）
-          // それ以外なら、一番近い TREE_ID を持つ要素からIDを取得
-          const toId = (to === previewRoot) 
-            ? null 
-            : to.closest(`[${treeIdAttr}]`)?.getAttribute(treeIdAttr);
-
-          const fromId = (from === previewRoot) 
-            ? null 
-            : from.closest(`[${treeIdAttr}]`)?.getAttribute(treeIdAttr);
-
-          // データを移動
-          this.moveDataNode(targetId, fromId, toId, newIndex);
-          // 再描画
-          this.syncView();
-        }
+        ...this._getCommonSortableOptions('.preview-drag-handle'),
+        group: { name: 'preview-nested', pull: true, put: true },
+        invertSwap: true,
+        onEnd: (evt) => this._onDragEnd(evt, 'preview')
       });
     });
   }
+  // ---------------------------------------------------------------
+
+
+      /**
+       * SortableJS の共通オプションを取得する
+       * @param {string} handleSelector - ドラッグハンドルのセレクタ
+       * @private
+       */
+      _getCommonSortableOptions(handleSelector) {
+        return {
+          animation: 150,
+          handle: handleSelector,
+          fallbackOnBody: true,
+          swapThreshold: 0.65,
+          preventOnFilter: false
+        };
+      }
+      // ---------------------------------------------------------------
+
+
+
+      /**
+       * サイドバー側でのドロップ許可判定
+       * @private
+       */
+      _canPutInTree(to) {
+        // ルートリストならOK
+        if (to.el.classList.contains('root-sortable-list')) return true;
+
+        // 子要素（枠）なら structure-box の場合のみOK
+        const parentLi = to.el.closest('.tree-item');
+        if (parentLi) {
+          const id = parentLi.getAttribute('data-id');
+          const node = this.logic.findNodeById(this.data, id);
+          return node && node.type === 'structure-box';
+        }
+        return false;
+      }
+      // ---------------------------------------------------------------
+
+
+
+      /**
+       * ドラッグ終了時の共通処理
+       * @param {Object} evt - SortableJS のイベントオブジェクト
+       * @param {'sidebar'|'preview'} mode - どちらのエリアでの操作か
+       * @private
+       */
+      _onDragEnd(evt, mode) {
+        const { item, from, to, newIndex } = evt;
+        const isPreview = mode === 'preview';
+        
+        // ID取得用の属性名
+        const idAttr = isPreview ? this.ctx.CONFIG.ATTRIBUTES.TREE_ID : 'data-id';
+        const previewRoot = isPreview ? document.querySelector(this.ctx.CONFIG.SELECTORS.CONTAINER_INNER) : null;
+
+        // ターゲットIDの取得
+        const targetId = item.getAttribute(idAttr);
+
+        // 親IDの判定ロジック（プレビューとツリーで共通化）
+        const getParentId = (container) => {
+          if (isPreview) {
+            return (container === previewRoot) ? null : container.closest(`[${idAttr}]`)?.getAttribute(idAttr);
+          } else {
+            return container.classList.contains('root-sortable-list') ? null : container.closest('.tree-item')?.getAttribute('data-id');
+          }
+        };
+
+        const toId = getParentId(to);
+        const fromId = getParentId(from);
+
+        // データの移動と同期
+        this.moveDataNode(targetId, fromId, toId, newIndex);
+        this.syncView();
+      }
+      // ---------------------------------------------------------------
+
+      
   // ---------------------------------------------------------------
 
 
@@ -524,109 +797,169 @@ export class WebModuleBuilder {
 
 
 
+  
+
   /**
-   * 編集パネル（スタイル・テキスト）を開き、入力をマウントする
-   * @param {Object} node - 対象のツリーノードデータ
+   * 編集パネルを開き、対象ノードのコンテンツ編集およびスタイル編集UIを構築する
+   * @param {Object} node - 編集対象のノードデータ
    */
   openEditPanel(node) {
     const masterNode = this.logic.findNodeById(this.data, node.id);
     const container = document.querySelector(this.ctx.CONFIG.SELECTORS.STYLE_PANEL_INNER);
     const styleBlock = document.querySelector(this.ctx.CONFIG.SELECTORS.STYLE_BLOCK);
+    
     if (!masterNode || !container || !styleBlock) return;
 
+    // 1. パネルの初期化とベースUIの生成
     styleBlock.classList.remove('is-hidden');
     container.innerHTML = "";
-    
     const panelBase = this.ui.createEditPanelBase(masterNode, this.ctx.STYLE_DEFS);
     container.appendChild(panelBase);
 
     const def = this.ctx.ELEMENT_DEFS[masterNode.type];
-    const specWrap = panelBase.querySelector('#content-specific-editor');
-    const propsList = panelBase.querySelector('#active-props-list');
-    if (!def || !specWrap) return;
+    if (!def) return;
 
-    // --- A. schema / $data 編集 (既存ロジック) ---
-    if (def.schema) {
-      Object.entries(def.schema).forEach(([key, config]) => {
-        if (config.isContent) {
-          if (masterNode.content === undefined) masterNode.content = config.default;
-        } else {
-          if (!masterNode.attrs) masterNode.attrs = {};
-          if (masterNode.attrs[key] === undefined) masterNode.attrs[key] = config.default;
-        }
-        const currentVal = config.isContent ? masterNode.content : masterNode.attrs[key];
-        const field = this.createAdvancedField(config.label, key, config.type, currentVal, config.options || [], (newVal) => {
-          if (config.isContent) { masterNode.content = newVal; masterNode.label = newVal || def.label; }
-          else { masterNode.attrs[key] = newVal; }
-          this.syncView();
-          this.saveToLocalStorage(); // 属性変更時も保存
-        });
-        specWrap.appendChild(field);
-      });
-    }
+    // 2. A領域：コンテンツ編集 (schema / $data) の構築
+    this._renderContentFields(panelBase.querySelector('#content-specific-editor'), masterNode, def);
 
-    // --- B. スタイル編集（ターゲット別） ---
-    const targetRoot = document.querySelector(`[${this.ctx.CONFIG.ATTRIBUTES.TREE_ID}="${node.id}"]`);
-    if (!targetRoot) return;
+    // 3. B領域：ターゲット別スタイル編集の構築
+    this._renderStyleSections(panelBase.querySelector('#active-props-list'), masterNode);
 
-    // スキャン：ルート ＋ 直系の子要素（.wrapper, .innerなど）
-    const targets = [{ name: 'モジュールルート', selector: '', el: targetRoot }];
-    targetRoot.querySelectorAll('[class]').forEach(el => {
-      if (el.closest(`[${this.ctx.CONFIG.ATTRIBUTES.MODULE}]`) !== targetRoot) return;
-      const className = Array.from(el.classList).find(c => !c.startsWith('is-') && !c.startsWith('preview-'));
-      if (className) {
-        const sel = `.${className}`;
-        if (!targets.some(t => t.selector === sel)) {
-          targets.push({ name: `${sel}`, selector: sel, el: el });
-        }
-      }
-    });
-
-    targets.forEach(target => {
-      const section = document.createElement('div');
-      section.className = 'style-section';
-      section.style.cssText = 'border-top:1px solid #ddd; margin-top:15px; padding-top:10px; display: flex; flex-direction: column;';
-      
-      const title = document.createElement('h4');
-      title.style.cssText = 'font-size:11px; color:#888; margin-bottom:8px;';
-      title.textContent = `--- ${target.name} ---`;
-      section.appendChild(title);
-
-      // 追加ボタン（セレクトボックス）を上に配置
-      const addRow = document.createElement('div');
-      addRow.className = 'add-prop-row';
-      addRow.style.marginBottom = '10px';
-      const sel = document.createElement('select');
-      sel.style.width = '100%';
-      sel.innerHTML = `<option value="">+ スタイルを追加</option>` + 
-                      this.ctx.STYLE_DEFS.map(s => `<option value='${JSON.stringify(s)}'>${s.name}</option>`).join('');
-      
-      const listContainer = document.createElement('div');
-      listContainer.className = 'props-list-inner';
-
-      sel.onchange = (e) => {
-        if (!e.target.value) return;
-        // 新規追加：第4引数は空文字（初期値）、これによって保存処理が走る
-        this.addPropInput(JSON.parse(e.target.value), listContainer, node.id, "", target.selector);
-        e.target.value = "";
+    // UIクラス側で生成されている .close-edit-panel を探す
+    const closeBtn = panelBase.querySelector('.close-edit-panel');
+    if (closeBtn) {
+      closeBtn.onclick = () => {
+        styleBlock.classList.add('is-hidden');
+        styleBlock.classList.remove('is-active');
+        // 外側クリックのイベント登録は行わない
       };
-
-      addRow.appendChild(sel);
-      section.appendChild(addRow);
-      section.appendChild(listContainer);
-
-      // 保存済みデータの復元（初期表示）
-      this.ctx.STYLE_DEFS.forEach(sDef => {
-        const storageKey = `${target.selector}:${sDef.prop}`;
-        if (masterNode.attrs && masterNode.attrs[storageKey] !== undefined) {
-          // 既存データの読み込み：第4引数に値を渡す
-          this.addPropInput(sDef, listContainer, node.id, masterNode.attrs[storageKey], target.selector);
-        }
-      });
-      
-      propsList.appendChild(section);
-    });
+    }
   }
+  // ---------------------------------------------------------------
+
+
+
+      /**
+       * モジュールの定義（schema）に基づき、テキストやリンクなどの編集フィールドを生成する
+       * @private
+       */
+      _renderContentFields(container, masterNode, def) {
+        if (!container || !def.schema) return;
+
+        Object.entries(def.schema).forEach(([key, config]) => {
+          // データの正規化
+          if (config.isContent) {
+            if (masterNode.content === undefined) masterNode.content = config.default;
+          } else {
+            if (!masterNode.attrs) masterNode.attrs = {};
+            if (masterNode.attrs[key] === undefined) masterNode.attrs[key] = config.default;
+          }
+
+          const currentVal = config.isContent ? masterNode.content : masterNode.attrs[key];
+
+          // フィールド生成と変更時イベント
+          const field = this.createAdvancedField(config.label, key, config.type, currentVal, config.options || [], (newVal) => {
+            if (config.isContent) {
+              masterNode.content = newVal;
+              masterNode.label = newVal || def.label; // ラベルをコンテンツに同期
+            } else {
+              masterNode.attrs[key] = newVal;
+            }
+            this.syncView();
+          });
+          container.appendChild(field);
+        });
+      }
+      // ---------------------------------------------------------------
+
+
+
+      /**
+       * プレビューDOMをスキャンし、スタイル変更可能なターゲットごとにセクションを生成する
+       * @private
+       */
+      _renderStyleSections(container, masterNode) {
+        if (!container) return;
+        const targetRoot = document.querySelector(`[${this.ctx.CONFIG.ATTRIBUTES.TREE_ID}="${masterNode.id}"]`);
+        if (!targetRoot) return;
+
+        // 編集可能なターゲット（ルートと主要な子要素）を取得
+        const targets = this._scanStyleTargets(targetRoot);
+
+        targets.forEach(target => {
+          const section = this._createStyleSectionUI(target, masterNode);
+          container.appendChild(section);
+        });
+      }
+      // ---------------------------------------------------------------
+
+
+
+      /**
+       * 指定された要素内の編集可能なクラス要素をスキャンしてリスト化する
+       * @private
+       */
+      _scanStyleTargets(targetRoot) {
+        const targets = [{ name: 'モジュールルート', selector: '', el: targetRoot }];
+        
+        targetRoot.querySelectorAll('[class]').forEach(el => {
+          // 他のモジュールに属する要素は除外
+          if (el.closest(`[${this.ctx.CONFIG.ATTRIBUTES.MODULE}]`) !== targetRoot) return;
+          
+          const className = Array.from(el.classList).find(c => !c.startsWith('is-') && !c.startsWith('preview-'));
+          if (className) {
+            const sel = `.${className}`;
+            if (!targets.some(t => t.selector === sel)) {
+              targets.push({ name: sel, selector: sel, el: el });
+            }
+          }
+        });
+        return targets;
+      }
+      // ---------------------------------------------------------------
+
+
+
+      /**
+       * 各ターゲット（.wrapper等）ごとのスタイル追加UIおよび既存プロパティを構築する
+       * @private
+       */
+      _createStyleSectionUI(target, masterNode) {
+        const section = document.createElement('div');
+        section.className = 'style-section';
+        section.innerHTML = `<h4 class="style-sectionTitle">--- ${target.name} ---</h4>`;
+
+        // プロパティ追加用セレクトボックス
+        const select = document.createElement('select');
+        select.className = 'prop-add-select';
+        select.style.width = '100%';
+        select.innerHTML = `<option value="">+ スタイルを追加</option>` + 
+                          this.ctx.STYLE_DEFS.map(s => `<option value='${JSON.stringify(s)}'>${s.name}</option>`).join('');
+        
+        const listContainer = document.createElement('div');
+        listContainer.className = 'props-list-inner';
+
+        select.onchange = (e) => {
+          if (!e.target.value) return;
+          this.addPropInput(JSON.parse(e.target.value), listContainer, masterNode.id, "", target.selector);
+          e.target.value = "";
+        };
+
+        section.appendChild(select);
+        section.appendChild(listContainer);
+
+        // 既存の保存済みスタイルを復元
+        this.ctx.STYLE_DEFS.forEach(sDef => {
+          const storageKey = `${target.selector}:${sDef.prop}`;
+          if (masterNode.attrs && masterNode.attrs[storageKey] !== undefined) {
+            this.addPropInput(sDef, listContainer, masterNode.id, masterNode.attrs[storageKey], target.selector);
+          }
+        });
+
+        return section;
+      }
+      // ---------------------------------------------------------------
+
   // ---------------------------------------------------------------
 
 
@@ -634,11 +967,19 @@ export class WebModuleBuilder {
 
 
   /**
-   * 各種UIパーツ生成ヘルパー
+   * 指定されたタイプに応じて、ラベル付きの編集フィールド行を生成する
+   * @param {string} label - フィールドのラベル
+   * @param {string} key - データのキー名
+   * @param {string} type - 入力タイプ (text, textarea, radio, checkbox, toggle 等)
+   * @param {any} currentVal - 現在の値
+   * @param {Array} options - 選択肢データ (radio, checkbox 等で使用)
+   * @param {Function} onChange - 値変更時のコールバック関数
+   * @returns {HTMLElement} 生成されたフィールド行要素
    */
   createAdvancedField(label, key, type, currentVal, options, onChange) {
     const row = document.createElement('div');
     row.className = 'edit-field-row';
+    
     const labelEl = document.createElement('label');
     labelEl.textContent = label;
     row.appendChild(labelEl);
@@ -646,405 +987,561 @@ export class WebModuleBuilder {
     const wrap = document.createElement('div');
     wrap.className = 'field-input-wrap';
 
-    // 1. ラジオボタン（単一選択）
-    if (type === 'radio') {
-      const groupName = `radio-${key}-${Math.random().toString(36).slice(2, 7)}`;
-      options.forEach(opt => {
-        const l = document.createElement('label');
-        l.className = 'radio-label';
-        const r = document.createElement('input');
-        r.type = 'radio';
-        r.name = groupName;
-        r.value = opt.value;
-        r.checked = (String(opt.value) === String(currentVal));
-        r.onchange = () => onChange(opt.value);
-        l.appendChild(r);
-        l.append(opt.label);
-        wrap.appendChild(l);
-      });
-    } 
-    // 2. チェックボックス（多項選択：複数チェック可）
-    else if (type === 'checkbox') {
-      const selectedValues = currentVal ? String(currentVal).split(',') : [];
-      options.forEach(opt => {
-        const l = document.createElement('label');
-        l.className = 'checkbox-label';
-        const c = document.createElement('input');
-        c.type = 'checkbox';
-        c.value = opt.value;
-        c.checked = selectedValues.includes(String(opt.value));
-        c.onchange = () => {
-          const checkedNodes = wrap.querySelectorAll('input[type="checkbox"]:checked');
-          const newVals = Array.from(checkedNodes).map(input => input.value);
-          onChange(newVals.join(','));
-        };
-        l.appendChild(c);
-        l.append(opt.label);
-        wrap.appendChild(l);
-      });
-    }
-    // 3. トグル（単一オンオフ：スイッチ形式）
-    else if (type === 'toggle') {
-      const onData = options[0] || { label: "ON", value: "true" };
-      const offData = options[1] || { label: "OFF", value: "false" };
-
-      const l = document.createElement('label');
-      l.className = 'toggle-switch'; // CSSでスイッチ風に装飾することを想定
-      const c = document.createElement('input');
-      c.type = 'checkbox';
-      c.checked = (String(currentVal) === String(onData.value));
-      
-      const statusLabel = document.createElement('span');
-      statusLabel.className = 'toggle-label';
-      statusLabel.textContent = c.checked ? onData.label : offData.label;
-
-      c.onchange = (e) => {
-        const isChecked = e.target.checked;
-        statusLabel.textContent = isChecked ? onData.label : offData.label;
-        onChange(isChecked ? onData.value : offData.value);
-      };
-
-      l.appendChild(c);
-      l.appendChild(statusLabel);
-      wrap.appendChild(l);
-    }
-    // 4. その他（text, textarea等）
-    else {
-      const i = document.createElement(type === 'textarea' ? 'textarea' : 'input');
-      if (type !== 'textarea') i.type = type;
-      i.value = currentVal;
-      i.oninput = (e) => onChange(e.target.value);
-      wrap.appendChild(i);
+    // タイプに応じたビルダーを呼び出す
+    let fieldNode;
+    switch (type) {
+      case 'radio':
+        fieldNode = this._buildRadioField(key, options, currentVal, onChange);
+        break;
+      case 'checkbox':
+        fieldNode = this._buildCheckboxField(options, currentVal, onChange);
+        break;
+      case 'toggle':
+        fieldNode = this._buildToggleField(options, currentVal, onChange);
+        break;
+      default:
+        fieldNode = this._buildDefaultField(type, currentVal, onChange);
     }
 
+    wrap.appendChild(fieldNode);
     row.appendChild(wrap);
     return row;
   }
   // ---------------------------------------------------------------
 
 
+      /** @private */
+      _buildRadioField(key, options, currentVal, onChange) {
+        const container = document.createDocumentFragment();
+        const groupName = `radio-${key}-${Math.random().toString(36).slice(2, 7)}`;
+        
+        options.forEach(opt => {
+          const l = document.createElement('label');
+          l.className = 'radio-label';
+          const r = document.createElement('input');
+          r.type = 'radio';
+          r.name = groupName;
+          r.value = opt.value;
+          r.checked = (String(opt.value) === String(currentVal));
+          r.onchange = () => onChange(opt.value);
+          l.append(r, opt.label);
+          container.appendChild(l);
+        });
+        return container;
+      }
+      // ---------------------------------------------------------------
+
+
+      /** @private */
+      _buildCheckboxField(options, currentVal, onChange) {
+        const container = document.createDocumentFragment();
+        const selectedValues = currentVal ? String(currentVal).split(',') : [];
+        
+        options.forEach(opt => {
+          const l = document.createElement('label');
+          l.className = 'checkbox-label';
+          const c = document.createElement('input');
+          c.type = 'checkbox';
+          c.value = opt.value;
+          c.checked = selectedValues.includes(String(opt.value));
+          c.onchange = (e) => {
+            // 親要素(fragmentはDOMに追加されると消えるので、イベント発生源から辿る)から全チェックを取得
+            const wrap = e.target.closest('.field-input-wrap');
+            const checkedNodes = wrap.querySelectorAll('input[type="checkbox"]:checked');
+            onChange(Array.from(checkedNodes).map(input => input.value).join(','));
+          };
+          l.append(c, opt.label);
+          container.appendChild(l);
+        });
+        return container;
+      }
+      // ---------------------------------------------------------------
+
+
+      /** @private */
+      _buildToggleField(options, currentVal, onChange) {
+        const onData = options[0] || { label: "ON", value: "true" };
+        const offData = options[1] || { label: "OFF", value: "false" };
+
+        const l = document.createElement('label');
+        l.className = 'toggle-switch';
+        const c = document.createElement('input');
+        c.type = 'checkbox';
+        c.checked = (String(currentVal) === String(onData.value));
+        
+        const statusLabel = document.createElement('span');
+        statusLabel.className = 'toggle-label';
+        statusLabel.textContent = c.checked ? onData.label : offData.label;
+
+        c.onchange = (e) => {
+          const isChecked = e.target.checked;
+          statusLabel.textContent = isChecked ? onData.label : offData.label;
+          onChange(isChecked ? onData.value : offData.value);
+        };
+
+        l.append(c, statusLabel);
+        return l;
+      }
+      // ---------------------------------------------------------------
+
+
+      /** @private */
+      _buildDefaultField(type, currentVal, onChange) {
+        const isTextarea = type === 'textarea';
+        const input = document.createElement(isTextarea ? 'textarea' : 'input');
+        if (!isTextarea) input.type = type;
+        input.value = currentVal;
+        input.oninput = (e) => onChange(e.target.value);
+        return input;
+      }
+      // ---------------------------------------------------------------
+
+
+  // ---------------------------------------------------------------
+
+
 
 
   /**
-   * サイドバーのHTMLを生成・描画し、各種UI部品をマウントする
-   * @param {Array} tree - 描画対象のツリーデータ
+   * サイドバーのツリー構造を生成・描画し、各種ボタンやSortableを初期化する
+   * @param {Object[]} tree - 表示対象のツリーデータ
    */
   renderSidebar(tree) {
     const displayInner = document.querySelector(this.ctx.CONFIG.SELECTORS.TREE_DISPLAY_INNER);
     if (!displayInner) return;
 
+    // 1. 基本構造の描画
     displayInner.innerHTML = "";
-    displayInner.appendChild(this.ui.createAddRow(null)); // ルート用
+    displayInner.appendChild(this.ui.createAddRow(null)); // ルート直下用追加ボタン
 
-    const toHtml = (node) => {
-      const id = this.ui.escapeHtml(node.id);
-      const isStrBox = node.type === 'structure-box';
-      const canHaveChildren = node.isStructure || isStrBox;
-      
-      return `
-        <li data-id="${id}" class="tree-item">
-          <div class="parent${isStrBox ? " no-drag structure-row" : ""}" data-row-id="${id}">
-            ${!isStrBox ? `<span class="drag-handle">≡</span>` : ""}
-            <span class="label-text">${isStrBox ? `[${this.ui.escapeHtml(node.label)}]` : this.ui.escapeHtml(node.label)}</span>
-            
-            <div class="row-controls">
-              <div class="manage-controls" data-manage-for="${id}">
-                <div class="add-controls" data-add-for="${id}"></div>
-              </div>
-            </div>
-          </div>
+    const treeHtml = `<ul class="sortable-list root-sortable-list">${this._buildTreeHtml(tree)}</ul>`;
+    displayInner.insertAdjacentHTML("beforeend", treeHtml);
 
-          <ul class="sortable-list">
-            ${node.children?.map(toHtml).join("") ?? ""}
-          </ul>
+    // 2. 各ノードへの動的部品（ボタン等）のマウント
+    this._mountTreeControls(displayInner, tree);
 
-          ${/* グリッドセット自体などのコンテナ系に「枠追加ボタン」を出すスロット */
-            (node.type !== 'structure-box' && this.ctx.ELEMENT_DEFS[node.type]?.template.includes(this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE)) 
-            ? `<div data-blockadd-for="${id}"></div>` 
-            : ""
-          }
-        </li>`.trim();
-    };
-
-    displayInner.insertAdjacentHTML("beforeend", `
-      <ul class="sortable-list root-sortable-list">
-        ${tree.map(toHtml).join("")}
-      </ul>
-    `);
-
-    // --- ボタンのマウント ---
-    displayInner.querySelectorAll('.tree-item').forEach(li => {
-      const id = li.getAttribute('data-id');
-      const node = this.logic.findNodeById(tree, id);
-      if (!node) return;
-
-      const mSlot = li.querySelector(`[data-manage-for="${id}"]`);
-      if (mSlot) {
-        // 枠（structure-box）には削除ボタンだけ、通常モジュールには編集・削除
-        if (! (node.type === 'structure-box')) mSlot.appendChild(this.ui.createEditButton(node));
-        mSlot.appendChild(this.ui.createDeleteButton(node));
-      }
-
-      // 【修正ポイント】枠（structure-box）にも「＋」ボタンを確実に出す
-      const addSlot = li.querySelector(`[data-add-for="${id}"]`);
-      if (addSlot && (node.isStructure || node.type === 'structure-box')) {
-        addSlot.appendChild(this.ui.createAddRow(node));
-      }
-    });
-
-    // 「+ 枠を追加」ボタンの描画
-    displayInner.querySelectorAll("[data-blockadd-for]").forEach(slot => {
-        const id = slot.getAttribute("data-blockadd-for");
-        const node = this.logic.findNodeById(tree, id);
-        if (node) {
-          const def = this.ctx.ELEMENT_DEFS[node.type];
-          const tempDiv = document.createElement('div');
-          tempDiv.innerHTML = def.template;
-          const dz = tempDiv.querySelector(`[${this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE}]`);
-          const label = dz ? dz.getAttribute(this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE) : "枠";
-
-          const btnContainer = this.ui.parseHtml(`
-            <div class="tree-block-add-wrap">
-              <button type="button" class="blockAddBtn">+ ${label}を追加</button>
-            </div>
-          `);
-          btnContainer.querySelector('button').onclick = (e) => {
-            e.stopPropagation();
-            this.addStructure(node.id, label);
-          };
-          slot.replaceWith(btnContainer);
-        }
-    });
-
+    // 3. インタラクション（並び替え・ホバー）の初期化
     displayInner.querySelectorAll("ul.sortable-list").forEach(ul => this.initSortable(ul));
     this.bindHoverEvents(displayInner);
   }
+  // ---------------------------------------------------------------
+
+
+      /**
+       * ツリーデータから再帰的にHTML文字列を生成する
+       * @private
+       */
+      _buildTreeHtml(nodes) {
+        return nodes.map(node => {
+          const id = this.ui.escapeHtml(node.id);
+          const isStrBox = node.type === 'structure-box';
+          const def = this.ctx.ELEMENT_DEFS[node.type];
+          
+          return `
+            <li data-id="${id}" class="tree-item">
+              <div class="parent${isStrBox ? " no-drag structure-row" : ""}" data-row-id="${id}">
+                ${!isStrBox ? `<span class="drag-handle">≡</span>` : ""}
+                <span class="label-text">${isStrBox ? `[${this.ui.escapeHtml(node.label)}]` : this.ui.escapeHtml(node.label)}</span>
+                <div class="row-controls">
+                  <div class="manage-controls" data-manage-for="${id}">
+                    <div class="add-controls" data-add-for="${id}"></div>
+                  </div>
+                </div>
+              </div>
+              <ul class="sortable-list">
+                ${node.children ? this._buildTreeHtml(node.children) : ""}
+              </ul>
+              ${/* 特殊コンテナへの枠追加用スロット */
+                (!isStrBox && def?.template.includes(this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE)) 
+                ? `<div data-blockadd-for="${id}"></div>` : ""
+              }
+            </li>`.trim();
+        }).join("");
+      }
+      // ---------------------------------------------------------------
+
+
+      /**
+       * 生成されたHTML要素に対して、JSで生成したボタン類を流し込む
+       * @private
+       */
+      _mountTreeControls(container, tree) {
+        // 編集・削除・追加ボタンのマウント
+        container.querySelectorAll('.tree-item').forEach(li => {
+          const id = li.getAttribute('data-id');
+          const node = this.logic.findNodeById(tree, id);
+          if (!node) return;
+
+          const mSlot = li.querySelector(`[data-manage-for="${id}"]`);
+          if (mSlot) {
+            if (node.type !== 'structure-box') mSlot.prepend(this.ui.createEditButton(node));
+            mSlot.appendChild(this.ui.createDeleteButton(node));
+          }
+
+          const addSlot = li.querySelector(`[data-add-for="${id}"]`);
+          if (addSlot && (node.isStructure || node.type === 'structure-box')) {
+            addSlot.appendChild(this.ui.createAddRow(node));
+          }
+        });
+
+        // 「+ 枠を追加」ボタンの特殊処理
+        container.querySelectorAll("[data-blockadd-for]").forEach(slot => {
+          this._setupBlockAddButton(slot, tree);
+        });
+      }
+      // ---------------------------------------------------------------
+
+
+      /**
+       * 構造体（グリッド等）専用の「枠を追加」ボタンをセットアップする
+       * @private
+       */
+      _setupBlockAddButton(slot, tree) {
+        const id = slot.getAttribute("data-blockadd-for");
+        const node = this.logic.findNodeById(tree, id);
+        if (!node) return;
+
+        const def = this.ctx.ELEMENT_DEFS[node.type];
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = def.template;
+        const dz = tempDiv.querySelector(`[${this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE}]`);
+        const label = dz ? dz.getAttribute(this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE) : "枠";
+
+        const btnWrapper = this.ui.parseHtml(`
+          <div class="tree-block-add-wrap">
+            <button type="button" class="blockAddBtn">+ ${label}を追加</button>
+          </div>
+        `);
+
+        btnWrapper.querySelector('button').onclick = (e) => {
+          e.stopPropagation();
+          this.fastAddFrame(node); // さきほど整理した fastAddFrame を呼び出し
+        };
+        slot.replaceWith(btnWrapper);
+      }
+      // ---------------------------------------------------------------
+
+  // ---------------------------------------------------------------
 
 
 
 
   /**
-   * スタイル編集用の入力フィールドを生成・管理する
-   * @param {Object} item - スタイル定義(STYLE_DEFS)
-   * @param {Element} parent - 挿入先のDOMコンテナ
+   * スタイル編集用の入力フィールドを生成・追加し、リアルタイム反映のイベントを登録する
+   * @param {Object} item - スタイル定義 (STYLE_DEFS)
+   * @param {HTMLElement} parent - 入力要素を挿入するコンテナ
    * @param {string} targetId - 操作対象のモジュールID
-   * @param {string} fullVal - 既存の値（あれば）
+   * @param {string} fullVal - 初期値
+   * @param {string} [selector=""] - 対象要素内のセレクタ（ルートなら空文字）
    */
-  // ---------------------------------------------------------------
   addPropInput(item, parent, targetId, fullVal = "", selector = "") {
-      const storageKey = `${selector}:${item.prop}`;
-      const escapedKey = storageKey.replace(/:/g, '\\:').replace(/\./g, '\\.');
-      if (parent.querySelector(`[data-storage-key="${escapedKey}"]`)) return;
-      
-      const propItem = this.ui.createPropInputItem(item, fullVal);
-      propItem.setAttribute('data-storage-key', storageKey);
-      
-      const masterNode = this.logic.findNodeById(this.data, targetId);
-      const targetRoot = document.querySelector(`[${this.ctx.CONFIG.ATTRIBUTES.TREE_ID}="${targetId}"]`);
+    const storageKey = `${selector}:${item.prop}`;
+    const escapedKey = storageKey.replace(/:/g, '\\:').replace(/\./g, '\\.');
+    
+    // 重複追加の防止
+    if (parent.querySelector(`[data-storage-key="${escapedKey}"]`)) return;
 
-      // スタイル更新のメインロジック
-      const updateStyles = () => {
-        const val = propItem.getValue();
-        if (targetRoot) {
-          const el = selector === "" ? targetRoot : targetRoot.querySelector(selector);
+    // 1. UIコンポーネントの生成
+    const propItem = this.ui.createPropInputItem(item, fullVal);
+    propItem.setAttribute('data-storage-key', storageKey);
+
+    // 2. 更新・削除ロジックのバインド
+    this._bindPropEvents(propItem, item, targetId, selector, storageKey);
+    this._bindDeleteEvent(propItem, item, targetId, selector, storageKey);
+
+    // 3. 初期値がある場合は即時適用（DOM生成待ちのため少し遅延）
+    if (fullVal !== "") setTimeout(() => propItem.querySelector('input, select, textarea')?.dispatchEvent(new Event('input')), 10);
+
+    parent.prepend(propItem);
+  }
+
+      /**
+       * 入力フィールドの変更イベントを監視し、スタイルを更新するロジックをバインド
+       * @private
+       */
+      _bindPropEvents(propItem, item, targetId, selector, storageKey) {
+        const masterNode = this.logic.findNodeById(this.data, targetId);
+        const targetRoot = document.querySelector(`[${this.ctx.CONFIG.ATTRIBUTES.TREE_ID}="${targetId}"]`);
+
+        const updateStyles = () => {
+          const val = propItem.getValue();
+          const el = selector === "" ? targetRoot : targetRoot?.querySelector(selector);
+
           if (el) {
             if (item.prop === 'custom-css') {
-              // --- 自由なCSSの適用（優先順位：最強） ---
-              // 個別設定（--id-）だけを抜き出す
-              const individualStyles = el.style.cssText.split(';').filter(s => {
-                const t = s.trim();
-                return t && (t.startsWith('--id') || t.includes('var(--id'));
-              }).join('; ');
-
-              // ★ 自由入力（val）を「後ろ」に結合する
-              // これにより、個別エリアと同じプロパティがあっても自由入力が勝ちます
-              el.style.cssText = `${individualStyles}; ${val}`;
-              el.dataset.lastCustomCss = val; 
+              this._applyCustomCssWithPriority(el, val);
             } else {
-              // --- 個別プロパティの適用 ---
-              const safeSelector = selector.replace(/\./g, '-');
-              const uniqueVar = `--id-${targetId}${safeSelector}-${item.prop}`;
-              
-              // 個別設定をセット
-              el.style.setProperty(uniqueVar, val);
-              el.style.setProperty(item.prop, `var(${uniqueVar})`);
-
-              // ★ 個別設定を更新した際も、もし自由入力があればそれを最後にくっつけ直す
-              // これをしないと、個別設定をいじった瞬間に順番が入れ替わってしまうため
-              const customCss = el.dataset.lastCustomCss;
-              if (customCss) {
-                // 一旦個別設定が反映されたあとの cssText の末尾に再結合
-                el.style.cssText = el.style.cssText + "; " + customCss;
-              }
+              this._applyIndividualStyle(el, item.prop, val, targetId, selector);
             }
           }
-        }
 
-        if (masterNode) {
-          if (!masterNode.attrs) masterNode.attrs = {};
-          masterNode.attrs[storageKey] = val;
-          this.saveToLocalStorage();
-        }
-      };
+          if (masterNode) {
+            if (!masterNode.attrs) masterNode.attrs = {};
+            masterNode.attrs[storageKey] = val;
+            this.saveToLocalStorage();
+          }
+        };
 
-      if (fullVal !== "") setTimeout(updateStyles, 10);
-      propItem.querySelectorAll('input, select, textarea').forEach(input => {
-        input.addEventListener('input', updateStyles);
-      });
-      
-      // --- 削除ボタンの修正 ---
-      propItem.querySelector('.del-p').onclick = () => {
-        if (targetRoot) {
-          const el = selector === "" ? targetRoot : targetRoot.querySelector(selector);
+        propItem.querySelectorAll('input, select, textarea').forEach(input => {
+          input.addEventListener('input', updateStyles);
+        });
+      }
+      // ---------------------------------------------------------------
+
+
+      /**
+       * 自由入力CSSを適用する。個別設定がある場合はそれを壊さず、自由入力を末尾（最強）に配置する
+       * @private
+       */
+      _applyCustomCssWithPriority(el, cssText) {
+        // 個別設定（--id- 変数）のみを抽出
+        const individuals = el.style.cssText.split(';').filter(s => {
+          const t = s.trim();
+          return t && (t.startsWith('--id') || t.includes('var(--id'));
+        }).join('; ');
+
+        // 自由入力を最後にして結合（最強の優先順位）
+        el.style.cssText = `${individuals}; ${cssText}`;
+        el.dataset.lastCustomCss = cssText;
+      }
+      // ---------------------------------------------------------------
+
+
+      /**
+       * 個別スタイル（margin等）を適用する。自由入力CSSが既にある場合は、優先順位を維持するため最後に再結合する
+       * @private
+       */
+      _applyIndividualStyle(el, prop, val, targetId, selector) {
+        const safeSelector = selector.replace(/\./g, '-');
+        const uniqueVar = `--id-${targetId}${safeSelector}-${prop}`;
+
+        el.style.setProperty(uniqueVar, val);
+        el.style.setProperty(prop, `var(${uniqueVar})`);
+
+        // 自由入力がある場合、末尾に再結合して優先順位を守る
+        const customCss = el.dataset.lastCustomCss;
+        if (customCss) {
+          el.style.cssText = el.style.cssText.split(';').filter(s => s.trim() && !s.includes(customCss)).join(';') + "; " + customCss;
+        }
+      }
+      // ---------------------------------------------------------------
+
+
+      /**
+       * 削除ボタンのクリックイベントをバインド
+       * @private
+       */
+      _bindDeleteEvent(propItem, item, targetId, selector, storageKey) {
+        propItem.querySelector('.del-p').onclick = () => {
+          const targetRoot = document.querySelector(`[${this.ctx.CONFIG.ATTRIBUTES.TREE_ID}="${targetId}"]`);
+          const el = selector === "" ? targetRoot : targetRoot?.querySelector(selector);
+          const masterNode = this.logic.findNodeById(this.data, targetId);
+
           if (el) {
             if (item.prop === 'custom-css') {
-              // 自由入力自体を消去
               const lastCss = el.dataset.lastCustomCss || "";
               el.style.cssText = el.style.cssText.replace(lastCss, "").trim();
               delete el.dataset.lastCustomCss;
             } else {
-              // 通常プロパティを消去
               const safeSelector = selector.replace(/\./g, '-');
               el.style.removeProperty(`--id-${targetId}${safeSelector}-${item.prop}`);
               el.style.removeProperty(item.prop);
-
-              // ★重要：削除後に「自由なCSS」が残っていれば再適用する
-              // これにより「上間隔」を消した瞬間に「自由なCSS」のmarginが有効になる
-              const customCssKey = `${selector}:custom-css`;
-              if (masterNode.attrs && masterNode.attrs[customCssKey]) {
-                  const customVal = masterNode.attrs[customCssKey];
-                  // 自由入力分以外のスタイルを抽出
-                  const currentIndividual = el.style.cssText.split(';').filter(s => {
-                      const t = s.trim();
-                      return t && !t.startsWith('--id') && !t.includes('var(--id');
-                  }).join('; ');
-                  // 自由入力を先頭にして再構成
-                  const otherStyles = el.style.cssText.replace(currentIndividual, "");
-                  el.style.cssText = `${customVal}; ${otherStyles}`;
-              }
+              
+              // 個別プロパティ削除後、自由CSSを再評価
+              const customVal = masterNode?.attrs[`${selector}:custom-css`];
+              if (customVal) this._applyCustomCssWithPriority(el, customVal);
             }
           }
-        }
-        if (masterNode?.attrs) delete masterNode.attrs[storageKey];
-        propItem.remove();
-        this.saveToLocalStorage();
-      };
 
-      parent.prepend(propItem); 
-    }
+          if (masterNode?.attrs) delete masterNode.attrs[storageKey];
+          propItem.remove();
+          this.saveToLocalStorage();
+        };
+      }
+      // ---------------------------------------------------------------
+
+
   // ---------------------------------------------------------------
 
 
 
   /**
-   * サイドバーと実DOM間のホバーイベントを同期する
-   * @param {Element} parent - イベントを監視する親要素
+   * サイドバーの各行とプレビューDOM間のホバー（強調表示）イベントをバインドする
+   * @param {HTMLElement} parent - イベントを監視するサイドバーの親コンテナ
    */
-  // ---------------------------------------------------------------
   bindHoverEvents(parent) {
     if (parent._hoverBound) return;
     parent._hoverBound = true;
 
+    const getRowId = (e) => e.target.closest("[data-row-id]")?.getAttribute("data-row-id");
+
     parent.addEventListener("mouseover", (e) => {
-      const row = e.target.closest("[data-row-id]");
-      if (row) this.handleHover(row.getAttribute("data-row-id"), true);
+      const id = getRowId(e);
+      if (id) this._toggleHighlight(id, true);
     });
 
     parent.addEventListener("mouseout", (e) => {
-      const row = e.target.closest("[data-row-id]");
-      if (row) this.handleHover(row.getAttribute("data-row-id"), false);
+      const id = getRowId(e);
+      if (id) this._toggleHighlight(id, false);
     });
   }
-  // ---------------------------------------------------------------
-
-
 
   /**
-   * 実DOMの要素にホバー属性を付与/削除する
-   * @param {string} id - 対象のID
-   * @param {boolean} active - ホバー中かどうか
+   * 指定したIDの要素（プレビュー側とサイドバー側両方）のホバー状態を同期する
+   * @param {string} id - 対象のノードID
+   * @param {boolean} isActive - ホバー中かどうか
+   * @private
    */
-  // ---------------------------------------------------------------
-  handleHover(id, active) {
-    const el = document.querySelector(`[${this.ctx.CONFIG.ATTRIBUTES.TREE_ID}="${id}"]`);
-    if (el) {
-      el.setAttribute('data-tree-hover', active ? 'true' : 'false');
+  _toggleHighlight(id, isActive) {
+    const attr = "data-tree-hover";
+
+    // 1. プレビュー側の要素を操作
+    const previewEl = document.querySelector(`[${this.ctx.CONFIG.ATTRIBUTES.TREE_ID}="${id}"]`);
+    if (previewEl) {
+      // クラスは使わず、属性だけで状態を管理
+      previewEl.setAttribute(attr, isActive ? 'true' : 'false');
+    }
+
+    // 2. サイドバー側の行（ツリーアイテム）を操作
+    const sidebarRow = document.querySelector(`[data-row-id="${id}"]`);
+    if (sidebarRow) {
+      // サイドバー側も属性で管理するように変更
+      sidebarRow.setAttribute(attr, isActive ? 'true' : 'false');
     }
   }
   // ---------------------------------------------------------------
 
 
 
+
+
   /**
-   * JSONツリー内のノードを移動させる（データ操作）
+   * データツリー内のノードを別の場所（親ノードやインデックス）へ移動させる
+   * @param {string} targetId - 移動させるノードのID
+   * @param {string|null} fromId - 移動前の親ノードID（ルートならnull）
+   * @param {string|null} toId - 移動後の親ノードID（ルートならnull）
+   * @param {number} newIndex - 移動先での挿入インデックス
    */
   moveDataNode(targetId, fromId, toId, newIndex) {
-    let movedNode = null;
-
-    // 1. 移動元からノードを削除して取得
-    const removeNode = (list) => {
-      for (let i = 0; i < list.length; i++) {
-        if (list[i].id === targetId) {
-          movedNode = list.splice(i, 1)[0];
-          return true;
-        }
-        if (list[i].children && removeNode(list[i].children)) return true;
-      }
-      return false;
-    };
-
-    // 2. 移動先（親ノード）のchildren配列に挿入
-    const insertNode = (list, parentId) => {
-      if (!parentId) { // ルート直下への移動
-        list.splice(newIndex, 0, movedNode);
-        return true;
-      }
-      for (let node of list) {
-        if (node.id === parentId) {
-          if (!node.children) node.children = [];
-          node.children.splice(newIndex, 0, movedNode);
-          return true;
-        }
-        if (node.children && insertNode(node.children, parentId)) return true;
-      }
-      return false;
-    };
-
-    removeNode(this.data);
-    if (movedNode) {
-      insertNode(this.data, toId);
+    // 1. 移動対象をツリーから探し出し、一旦取り出す
+    const movedNode = this._extractNodeById(this.data, targetId);
+    
+    if (!movedNode) {
+      console.warn(`Node not found: ${targetId}`);
+      return;
     }
+
+    // 2. 指定された移動先の親ノード（またはルート）に挿入する
+    this._insertNodeAt(this.data, toId, newIndex, movedNode);
   }
+  // ---------------------------------------------------------------
+
+
+      /**
+       * ツリー内を再帰的に探索し、対象ノードを削除してそのデータを返す
+       * @param {Object[]} list - 探索対象の配列
+       * @param {string} targetId - 取り出したいノードのID
+       * @returns {Object|null} 取り出したノードデータ、見つからない場合はnull
+       * @private
+       */
+      _extractNodeById(list, targetId) {
+        for (let i = 0; i < list.length; i++) {
+          if (list[i].id === targetId) {
+            // 対象が見つかったので配列から削除して返す
+            return list.splice(i, 1)[0];
+          }
+          if (list[i].children && list[i].children.length > 0) {
+            const found = this._extractNodeById(list[i].children, targetId);
+            if (found) return found;
+          }
+        }
+        return null;
+      }
+      // ---------------------------------------------------------------
+
+      
+
+      /**
+       * 指定した親ノードの children 配列、またはルート配列にノードを挿入する
+       * @param {Object[]} list - 探索対象の配列
+       * @param {string|null} parentId - 挿入先の親ID（ルートならnull）
+       * @param {number} index - 挿入するインデックス
+       * @param {Object} nodeToInsert - 挿入するノードデータ
+       * @returns {boolean} 挿入に成功したか
+       * @private
+       */
+      _insertNodeAt(list, parentId, index, nodeToInsert) {
+        // ルートへの挿入
+        if (!parentId) {
+          list.splice(index, 0, nodeToInsert);
+          return true;
+        }
+
+        // 特定の親ノードを再帰的に探す
+        for (let node of list) {
+          if (node.id === parentId) {
+            if (!Array.isArray(node.children)) node.children = [];
+            node.children.splice(index, 0, nodeToInsert);
+            return true;
+          }
+          if (node.children && node.children.length > 0) {
+            if (this._insertNodeAt(node.children, parentId, index, nodeToInsert)) {
+              return true;
+            }
+          }
+        }
+        return false;
+      }
+      // ---------------------------------------------------------------
+
   // ---------------------------------------------------------------
 
 
 
   /**
-   * モジュールをデータに追加し、プレビューとサイドバーを更新する
-   * @param {string} defId - モジュール定義のID (m-text01等)
-   * @param {string|null} parentId - 追加先の親ノードのID。nullの場合はルートへ。
+   * 新しいモジュールを生成し、指定した親ID（またはルート）の末尾に追加する
+   * @param {string} defId - モジュール定義のID (例: 'm-text01')
+   * @param {string|null} [parentId=null] - 追加先の親ノードID。nullの場合はルートへ。
    */
   addModule(defId, parentId = null) {
-    // 1. 新しいノードのJSONデータを生成
+    // 1. ノードの初期データを生成（既存の整理済みメソッドを使用）
     const newNode = this.createInitialData(defId);
     if (!newNode) return;
 
-    if (!parentId) {
-      // ルート（最上位）に追加
-      if (!this.data) this.data = [];
-      this.data.push(newNode);
-    } else {
-      // 特定の親（グリッドの枠など）の中に追加
-      const parentNode = this.logic.findNodeById(this.data, parentId);
-      if (parentNode) {
-        if (!parentNode.children) parentNode.children = [];
-        parentNode.children.push(newNode);
-      }
-    }
+    // 2. 指定された場所にデータを挿入（内部ロジックを分離）
+    this._attachNodeToTarget(newNode, parentId);
 
-    // 2. データが更新されたので、一斉再描画（プレビュー・サイドバー両方）
+    // 3. 同期と保存
     this.syncView();
   }
+  // ---------------------------------------------------------------
+
+
+      /**
+       * 生成されたノードを、IDを元にツリー内の適切な場所に接続する
+       * @param {Object} newNode - 追加するノードデータ
+       * @param {string|null} parentId - ターゲットとなる親のID
+       * @private
+       */
+      _attachNodeToTarget(newNode, parentId) {
+        if (!parentId) {
+          // 親IDがない場合はルート配列に追加
+          if (!Array.isArray(this.data)) this.data = [];
+          this.data.push(newNode);
+        } else {
+          // 親IDがある場合はツリー内を検索して追加
+          const parentNode = this.logic.findNodeById(this.data, parentId);
+          if (parentNode) {
+            if (!Array.isArray(parentNode.children)) parentNode.children = [];
+            parentNode.children.push(newNode);
+          } else {
+            console.warn(`Target parent node not found: ${parentId}`);
+          }
+        }
+      }
+      // ---------------------------------------------------------------
+
+
   // ---------------------------------------------------------------
 
 
@@ -1088,109 +1585,252 @@ export class WebModuleBuilder {
 
 
 
-  /**
-   * 現在のデータをJSONファイルとしてダウンロードする
+ /**
+   * 現在のデータツリーをJSONファイルとしてシリアライズし、ブラウザからダウンロードする
    */
   exportJSON() {
+    // 1. データのJSON化（インデント付きで見やすく）
     const jsonString = JSON.stringify(this.data, null, 2);
-    const blob = new Blob([jsonString], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
     
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `web-module-data-${new Date().getTime()}.json`;
-    a.click();
-    
-    URL.revokeObjectURL(url);
+    // 2. ユニークなファイル名の生成
+    const fileName = this._generateExportFileName('json');
+
+    // 3. ダウンロード処理の実行
+    this._downloadFile(jsonString, fileName, 'application/json');
   }
   // ---------------------------------------------------------------
 
 
+      /**
+       * タイムスタンプを含むエクスポート用ファイル名を生成する
+       * @param {string} extension - 拡張子 (例: 'json', 'html')
+       * @returns {string} ファイル名
+       * @private
+       */
+      _generateExportFileName(extension) {
+        const timestamp = new Date().getTime();
+        return `web-module-data-${timestamp}.${extension}`;
+      }
+      // ---------------------------------------------------------------
 
+
+      /**
+       * 文字列データをファイルとしてブラウザにダウンロードさせる
+       * @param {string} content - 書き出す内容
+       * @param {string} fileName - 保存するファイル名
+       * @param {string} contentType - MIMEタイプ
+       * @private
+       */
+      _downloadFile(content, fileName, contentType) {
+        const blob = new Blob([content], { type: contentType });
+        const url = URL.createObjectURL(blob);
+        
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        
+        // DOMに追加せずに発火させてクリーンに保つ
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        
+        // メモリ解放
+        URL.revokeObjectURL(url);
+      }
+      // ---------------------------------------------------------------
+      
+  // ---------------------------------------------------------------
+
+
+  /**
+   * 全ノードのスタイル（個別設定 ＆ 自由入力CSS）を解析し、CSSファイルとしてエクスポートする
+   */
   exportCSS() {
     let cssContent = "/* Generated by WebModuleBuilder */\n\n";
 
-    const extractStyles = (nodes) => {
-      nodes.forEach(node => {
-        if (node.attrs) {
-          const pref = node.type?.startsWith('m-') ? "module" : "layout";
-          const styles = Object.keys(node.attrs)
-            .filter(key => this.ctx.STYLE_DEFS.some(s => s.prop === key))
-            .map(key => `  --${pref}-${key}: ${node.attrs[key]};`);
-
-          if (styles.length > 0) {
-            cssContent += `[data-tree-id="${node.id}"] {\n${styles.join('\n')}\n}\n\n`;
-          }
-        }
-        if (node.children) extractStyles(node.children);
-      });
-    };
-
-    extractStyles(this.data);
+    // 1. ツリーを走査してCSS文字列を構築
+    cssContent += this._buildFullCssString(this.data);
     
-    const blob = new Blob([cssContent], { type: 'text/css' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = 'styles.css'; a.click();
+    // 2. ファイル名の生成
+    const fileName = this._generateExportFileName('css');
+
+    // 3. 共通メソッドを使用してダウンロード
+    this._downloadFile(cssContent, fileName, 'text/css');
   }
   // ---------------------------------------------------------------
 
+
+      /**
+       * ノードリストを再帰的に解析し、各要素のCSSルールを生成する
+       * @param {Object[]} nodes - ノード配列
+       * @returns {string} 構築されたCSS文字列
+       * @private
+       */
+      _buildFullCssString(nodes) {
+        let str = "";
+
+        nodes.forEach(node => {
+          if (node.attrs) {
+            // ターゲット(selector)ごとにスタイルを集計
+            const targetStyles = this._collectStylesBySelector(node);
+
+            Object.entries(targetStyles).forEach(([selector, styles]) => {
+              const cssSelector = `[${this.ctx.CONFIG.ATTRIBUTES.TREE_ID}="${node.id}"]${selector}`;
+              str += `${cssSelector} {\n${styles.join('\n')}\n}\n\n`;
+            });
+          }
+
+          // 子要素も再帰的に処理
+          if (node.children && node.children.length > 0) {
+            str += this._buildFullCssString(node.children);
+          }
+        });
+
+        return str;
+      }
+      // ---------------------------------------------------------------
+
+
+      /**
+       * ノードのattrsからセレクタごとのスタイル定義を整理する
+       * @private
+       */
+      _collectStylesBySelector(node) {
+        const map = {};
+
+        Object.entries(node.attrs).forEach(([key, val]) => {
+          if (!key.includes(':')) return;
+          const [selector, prop] = key.split(':');
+          if (!map[selector]) map[selector] = [];
+
+          if (prop === 'custom-css') {
+            // 自由入力CSSをそのまま追加
+            map[selector].push(`  ${val}`);
+          } else {
+            // 個別プロパティを追加
+            map[selector].push(`  ${prop}: ${val};`);
+          }
+        });
+
+        return map;
+      }
+      // ---------------------------------------------------------------
+
+
+  // ---------------------------------------------------------------
+
+
+
+
   /**
-   * 設定されたスタイルをCSS変数としてエクスポートする
+   * ツールバーを生成し、DOMにマウントする
+   * UIの具体的な構築ロジックは this.ui.createToolbar に委譲する
    */
   renderToolbar() {
-    const toolbarContainer = document.getElementById('builder-toolbar');
-    if (!toolbarContainer) return;
-
-    toolbarContainer.innerHTML = ""; // 一旦クリア
+    const selector = this.ctx.CONFIG.SELECTORS.TOOLBAR || '#builder-toolbar';
+    const container = document.querySelector(selector);
     
-    // UIクラスに builder インスタンスを渡して、完成した要素をもらう
+    if (!container) {
+      console.warn(`Toolbar container not found: ${selector}`);
+      return;
+    }
+
+    // 1. コンテナをクリア
+    container.innerHTML = "";
+    
+    // 2. UIクラスから完成したツールバー要素を取得
+    // 第1引数に this (WebModuleBuilder) を渡すことで、UI側から各種メソッドを呼べるようにする
     const toolbarEl = this.ui.createToolbar(this);
-    toolbarContainer.appendChild(toolbarEl);
+    
+    // 3. DOMへのマウント
+    if (toolbarEl) {
+      container.appendChild(toolbarEl);
+    }
   }
   // ---------------------------------------------------------------
 
 
-  
+
+
 
   /**
-   * JSONファイルを選択してデータを復元する
+   * JSONファイルを選択し、現在のエディタ状態を復元する
    */
   importJSON() {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.json';
     
-    input.onchange = (e) => {
+    input.onchange = async (e) => {
       const file = e.target.files[0];
       if (!file) return;
 
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        try {
-          const importedData = JSON.parse(event.target.result);
-          
-          if (confirm('現在の内容が上書きされます。よろしいですか？')) {
-            // マスターデータを更新
-            this.data = importedData;
-            // 履歴（Undo用）に保存
-            this.historyStack.push(JSON.parse(JSON.stringify(this.data)));
-            // 画面を再描画
-            this.syncView();
-          }
-        } catch (err) {
-          alert('JSONの解析に失敗しました。正しい形式のファイルを選択してください。');
-        }
-      };
-      reader.readAsText(file);
+      try {
+        const jsonContent = await this._readFileAsText(file);
+        const importedData = JSON.parse(jsonContent);
+
+        // データの適用（確認と履歴保存を含む）
+        this._applyImportedData(importedData);
+      } catch (err) {
+        alert('ファイルの読み込み、またはJSONの解析に失敗しました。');
+        console.error('Import error:', err);
+      }
     };
     
     input.click();
   }
   // ---------------------------------------------------------------
 
+
+      /**
+       * 読み込んだデータを現在のマスターデータに適用する
+       * @param {Object[]} importedData - インポートされたツリーデータ
+       * @private
+       */
+      _applyImportedData(importedData) {
+        if (!Array.isArray(importedData)) {
+          throw new Error('Invalid data format: Expected an array.');
+        }
+
+        if (confirm('現在の内容が上書きされます。よろしいですか？')) {
+          // マスターデータを更新
+          this.data = importedData;
+
+          // 履歴（Undo/Redo用）への記録（履歴管理メソッドがある場合）
+          if (this.historyStack) {
+            this.historyStack.push(JSON.parse(JSON.stringify(this.data)));
+          }
+
+          // 画面の同期とローカルストレージ保存
+          this.syncView();
+          
+          alert('データを正常に復元しました。');
+        }
+      }
+      // ---------------------------------------------------------------
+
+
+      /**
+       * Fileオブジェクトをテキストとして読み込む（Promise化）
+       * @param {File} file 
+       * @returns {Promise<string>}
+       * @private
+       */
+      _readFileAsText(file) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (e) => resolve(e.target.result);
+          reader.onerror = (e) => reject(e);
+          reader.readAsText(file);
+        });
+      }
+      // ---------------------------------------------------------------
+
+  // ---------------------------------------------------------------
+
   
 
+  
 
   /**
    * データをブラウザの localStorage に保存する

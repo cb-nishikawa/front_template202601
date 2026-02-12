@@ -118,21 +118,18 @@ export class WebModuleUI {
    * @returns {Element} パネルのDOM
    */
   // ---------------------------------------------------------------
-  createEditPanelBase(node, styleDefs) {
-    const options = styleDefs.map(s => 
-      `<option value='${JSON.stringify(s)}'>${s.name}</option>`
-    ).join('');
-
+  createEditPanelBase(node) {
     const html = `
       <div class="edit-panel-content">
-        <h3 class="panel-title">${this.escapeHtml(node.label)}</h3>
-        <div id="content-specific-editor" class="spec-editor"></div>
-        <div class="prop-add-section">
-          <select id="prop-selector" class="prop-select" data-tree-ignore>
-            <option value="">+ スタイルを追加</option>
-            ${options}
-          </select>
+        <div class="panel-header">
+          <h3 class="panel-title" style="margin: 0;">${this.escapeHtml(node.label)}</h3>
+          <button type="button" class="close-edit-panel" style="background: none; border: none; font-size: 24px; cursor: pointer; color: #888;">&times;</button>
         </div>
+        
+        <div id="content-specific-editor" class="spec-editor"></div>
+        
+        <hr class="panel-divider">
+
         <div id="active-props-list" class="props-list"></div>
       </div>`.trim();
 
@@ -196,14 +193,10 @@ export class WebModuleUI {
    * スタイル項目の入力行（ラベル + 入力欄 + 単位 + 削除ボタン）を生成する
    */
   createPropInputItem(item, fullVal = "") {
+    // 1. 数値と単位の解析ロジック（元コードのロジックを継承）
     let numVal = "", unitVal = "px";
-    
-    // 値の解析（数値と単位の分離）
     if (fullVal) {
-      if (item.type === 'color') {
-        // カラーの場合はそのまま代入
-        numVal = fullVal;
-      } else {
+      if (item.type !== 'color' && item.type !== 'textarea') {
         const match = fullVal.match(/(-?\d+\.?\d*)(.*)/);
         if (match) { 
           numVal = match[1]; 
@@ -215,37 +208,35 @@ export class WebModuleUI {
     const units = ['px', '%', 'rem', 'vh', 'vw', 'auto'];
     const unitOptions = units.map(u => `<option ${unitVal === u ? 'selected' : ''}>${u}</option>`).join('');
 
-    // --- HTMLの生成 ---
-    // color の場合は type="text" に変更し、クラス名 c-in を付与
+    // 2. HTMLの組み立て（★ここでラベル item.name を追加！）
     const html = `
       <div class="prop-input-item" data-p="${item.prop}">
-        ${item.type === 'textarea' ? 
-          `<textarea class="t-in" data-tree-ignore style="width:100%; height:80px; font-family:monospace; font-size:12px; margin-top:5px;">${fullVal}</textarea>` :
-          (item.type === 'color' ? 
-            `<input type="text" class="c-in" value="${fullVal || '#ffffff'}" placeholder="#ffffff" data-tree-ignore>` : 
-            `<input type="number" class="n-in" value="${numVal}" data-tree-ignore>
-             <select class="u-in" data-tree-ignore>${unitOptions}</select>`
-          )
-        }
-        <button type="button" class="del-p" data-tree-ignore>×</button>
+        <div class="prop-header" style="display:flex; justify-content:space-between; align-items:center;">
+          <span class="prop-label" style="font-size:11px; font-weight:bold; color:#444;">${item.name}</span>
+          <button type="button" class="del-p" data-tree-ignore>×</button>
+        </div>
+        
+        <div class="prop-body" style="margin-top:4px;">
+          ${item.type === 'textarea' ? 
+            `<textarea class="t-in" data-tree-ignore style="width:100%; height:80px; font-family:monospace; font-size:11px; padding:4px;">${fullVal}</textarea>` :
+            (item.type === 'color' ? 
+              `<input type="text" class="c-in" value="${fullVal || '#ffffff'}" placeholder="#ffffff" data-tree-ignore style="width:100%;">` : 
+              `<input type="number" class="n-in" value="${numVal}" data-tree-ignore style="width:60px;">
+               <select class="u-in" data-tree-ignore>${unitOptions}</select>`
+            )
+          }
+        </div>
       </div>`.trim();
 
     const div = this.parseHtml(html);
 
-    /**
-     * 要素から現在の入力値を組み立てて返すヘルパー
-     * WebModuleBuilder.js の updateStyles から呼び出されます
-     */
+    // 3. 値の取得ヘルパー（元の getValue ロジックを完全再現）
     div.getValue = () => {
-      if (item.type === 'textarea') return div.querySelector('.t-in').value
-      if (item.type === 'color') {
-        // テキストボックスの値をそのまま（#ffffff等）返す
-        return div.querySelector('.c-in').value;
-      }
+      if (item.type === 'textarea') return div.querySelector('.t-in').value;
+      if (item.type === 'color') return div.querySelector('.c-in').value;
+      
       const n = div.querySelector('.n-in').value;
       const u = div.querySelector('.u-in').value;
-      
-      // autoの場合は数値なし、それ以外は数値+単位
       if (u === 'auto') return 'auto';
       return (n !== "") ? n + u : "";
     };

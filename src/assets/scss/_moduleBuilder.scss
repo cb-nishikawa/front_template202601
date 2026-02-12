@@ -29,10 +29,14 @@
                 // ルート要素（一番外側の親）が空でもドロップできるように最小高さを確保
                 min-height: 300px; 
                 padding-bottom: 100px; // 下の方に落としやすくする余白
+
+                [data-tree-hover="true"] {
+                    outline: 1px dashed #3498db;
+                }
                 
 
                 &.drag-enabled {
-                    .is-preview-draggable:hover {
+                    [data-preview-draggable="true"]:hover {
                          &>.preview-handle-wrapper {
                             opacity: 1; /* ホバー時だけ表示 */
                          }
@@ -61,12 +65,12 @@
                     }
 
                      /* ホバー時に枠を表示 */
-                    .is-preview-draggable:hover {
+                    [data-preview-draggable="true"]:hover {
                         outline: 1px dashed #3498db;
                     }
 
                     /* ドラッグできる要素の親（相対配置の基準） */
-                    .is-preview-draggable {
+                    [data-preview-draggable="true"] {
                         position: relative;
                         /* 親要素と重ならないよう少しの内側余白を確保 */
                     }
@@ -534,7 +538,13 @@
         padding: 20px;
 
         &>.inner {
-            h3 {
+            .panel-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 10px;
+            }
+            .panel-title {
                 font-size: 10px;
                 border-bottom: 2px solid #333;
                 margin-bottom: 20px;
@@ -542,6 +552,42 @@
             }
             select {
                 font-size: 11px;
+            }
+            .edit-field-row {
+                margin-top: 10px;
+                padding: 5px;
+                background-color: #F0F0F0;
+                label {
+                    font-size: 12px;
+                    font-weight: bold;
+                    margin-bottom: 5px;
+                    display: block;
+                }
+            }
+            .style-section {
+                margin-top: 10px;
+                padding: 5px;
+                background-color: #F0F0F0;
+
+                .style-sectionTitle {
+                    margin-bottom: 5px;
+                    font-size: 12px;
+                    font-weight: bold;
+                }
+
+                textarea {
+                    box-sizing: border-box;
+                }
+            }
+
+            .panel-divider {
+                margin: 10px 0;
+                border: none;
+                border-top: 1px solid #eee;
+            }
+
+            .prop-input-item {
+                margin-top: 5px;
             }
 
             .field {
