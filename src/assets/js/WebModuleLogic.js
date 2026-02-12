@@ -151,4 +151,62 @@ export class WebModuleLogic {
     return null;
   }
   // ---------------------------------------------------------------
+
+
+
+  /**
+   * 指定された定義IDから、初期状態のノードデータを生成する
+   * @param {string} defId 
+   * @returns {Object|null}
+   */
+  createEmptyNode(defId) {
+    const def = this.ctx.ELEMENT_DEFS[defId];
+    if (!def) return null;
+
+    // 1. ユニークIDの生成
+    const id = "id-" + Math.random().toString(36).slice(2, 11);
+
+    // 2. テンプレートから初期ラベルの抽出 (Builderにあったロジックをここに集約)
+    let label = def.label;
+    const temp = document.createElement('div');
+    temp.innerHTML = def.template;
+    const treeViewEl = temp.querySelector('[data-tree-view]');
+    if (treeViewEl) {
+      const editConf = treeViewEl.getAttribute('data-edit');
+      if (editConf && editConf.includes('html:')) {
+        const configPart = editConf.split(';').find(c => c.trim().startsWith('html:'));
+        if (configPart) {
+          label = configPart.split(':')[2] || def.label;
+        }
+      }
+    }
+
+    // 3. ノードの基本形
+    const newNode = {
+      id: id,
+      type: defId,
+      label: label,
+      children: [],
+      attrs: {},
+      isStructure: def.template.includes(this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE)
+    };
+
+    // 4. DropZone（入れ子構造）がある場合、デフォルトの子要素（structure-box）を入れる
+    const dzEl = temp.querySelector(`[${this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE}]`);
+    if (dzEl) {
+      newNode.children.push({
+        id: "id-" + Math.random().toString(36).slice(2, 11),
+        type: 'structure-box',
+        label: dzEl.getAttribute(this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE) || "枠",
+        isStructure: true,
+        children: []
+      });
+    }
+
+    return newNode;
+  }
+  // ---------------------------------------------------------------
+
+
+  
 }

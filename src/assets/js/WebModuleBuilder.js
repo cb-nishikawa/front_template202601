@@ -14,6 +14,10 @@ export class WebModuleBuilder {
     this.previewDragEnabled = false;
     this.historyStack = [];
     this.handleKeyDown = this.handleKeyDown.bind(this);
+
+    this.selectedModules = [];
+    this.selectedModuleCounts = {};
+    this.sheetAllowDuplicates = false;
   }
 
 
@@ -36,65 +40,6 @@ export class WebModuleBuilder {
     window.addEventListener('keydown', this.handleKeyDown);
   }
   // ---------------------------------------------------------------
-
-
-
-  /**
-   * ツールバーのボタンを生成し、指定のコンテナに配置する
-   */
-  renderToolbar() {
-    const toolbar = document.getElementById('builder-toolbar');
-    if (!toolbar) return;
-
-    toolbar.innerHTML = ""; // 初期化
-
-    // 1. ボタンの定義リスト（将来の拡張がここだけで完結します）
-    const buttonConfigs = [
-      { id: "export-btn", text: "エクスポート", action: () => this.exportJSON() },
-      { id: "import-btn", text: "インポート", action: () => this.importJSON() },
-      { id: "clear-btn",  text: "初期化",      action: () => this.clearLocalStorage(), className: "btn-danger" }
-    ];
-
-    // 2. 定義に基づいてボタンを一括生成
-    buttonConfigs.forEach(config => {
-      const btn = this._createToolbarButton(config);
-      toolbar.appendChild(btn);
-    });
-  }
-  // ---------------------------------------------------------------
-
-
-      /**
-       * 単一のツールバーボタンを生成する
-       * @param {Object} config - ボタンの設定オブジェクト
-       * @param {string} config.id - ボタンのID
-       * @param {string} config.text - 表示テキスト
-       * @param {Function} config.action - クリック時の実行関数
-       * @param {string} [config.className] - 追加するクラス名
-       * @returns {HTMLButtonElement} 生成されたボタン要素
-       * @private
-       */
-      _createToolbarButton(config) {
-        const btn = document.createElement('button');
-        btn.id = config.id;
-        btn.textContent = config.text;
-        
-        if (config.className) {
-          btn.classList.add(config.className);
-        }
-        
-        btn.onclick = (e) => {
-          e.preventDefault();
-          config.action();
-        };
-
-        return btn;
-      }
-      // ---------------------------------------------------------------
-
-
-  // ---------------------------------------------------------------
-
 
 
   /**
@@ -1112,7 +1057,8 @@ export class WebModuleBuilder {
 
     // 1. 基本構造の描画
     displayInner.innerHTML = "";
-    displayInner.appendChild(this.ui.createAddRow(null)); // ルート直下用追加ボタン
+    
+    displayInner.appendChild(this.ui.createAddControls(this, null));
 
     const treeHtml = `<ul class="sortable-list root-sortable-list">${this._buildTreeHtml(tree)}</ul>`;
     displayInner.insertAdjacentHTML("beforeend", treeHtml);
@@ -1180,7 +1126,7 @@ export class WebModuleBuilder {
 
           const addSlot = li.querySelector(`[data-add-for="${id}"]`);
           if (addSlot && (node.isStructure || node.type === 'structure-box')) {
-            addSlot.appendChild(this.ui.createAddRow(node));
+            addSlot.appendChild(this.ui.createAddControls(this, node.id));
           }
         });
 
@@ -1238,21 +1184,19 @@ export class WebModuleBuilder {
     const storageKey = `${selector}:${item.prop}`;
     const escapedKey = storageKey.replace(/:/g, '\\:').replace(/\./g, '\\.');
     
-    // 重複追加の防止
     if (parent.querySelector(`[data-storage-key="${escapedKey}"]`)) return;
 
-    // 1. UIコンポーネントの生成
     const propItem = this.ui.createPropInputItem(item, fullVal);
     propItem.setAttribute('data-storage-key', storageKey);
 
-    // 2. 更新・削除ロジックのバインド
     this._bindPropEvents(propItem, item, targetId, selector, storageKey);
     this._bindDeleteEvent(propItem, item, targetId, selector, storageKey);
+    this._insertSortedPropItem(parent, propItem, item.prop);
 
-    // 3. 初期値がある場合は即時適用（DOM生成待ちのため少し遅延）
-    if (fullVal !== "") setTimeout(() => propItem.querySelector('input, select, textarea')?.dispatchEvent(new Event('input')), 10);
-
-    parent.prepend(propItem);
+    // 💡 修正：setTimeout と Event 発火をやめ、メソッドを直接実行
+    if (fullVal !== "") {
+      this._updatePropValue(propItem, item, targetId, selector, storageKey);
+    }
   }
 
       /**
@@ -1260,31 +1204,42 @@ export class WebModuleBuilder {
        * @private
        */
       _bindPropEvents(propItem, item, targetId, selector, storageKey) {
-        const masterNode = this.logic.findNodeById(this.data, targetId);
-        const targetRoot = document.querySelector(`[${this.ctx.CONFIG.ATTRIBUTES.TREE_ID}="${targetId}"]`);
-
-        const updateStyles = () => {
-          const val = propItem.getValue();
-          const el = selector === "" ? targetRoot : targetRoot?.querySelector(selector);
-
-          if (el) {
-            if (item.prop === 'custom-css') {
-              this._applyCustomCssWithPriority(el, val);
-            } else {
-              this._applyIndividualStyle(el, item.prop, val, targetId, selector);
-            }
-          }
-
-          if (masterNode) {
-            if (!masterNode.attrs) masterNode.attrs = {};
-            masterNode.attrs[storageKey] = val;
-            this.saveToLocalStorage();
-          }
-        };
+        const update = () => this._updatePropValue(propItem, item, targetId, selector, storageKey);
 
         propItem.querySelectorAll('input, select, textarea').forEach(input => {
-          input.addEventListener('input', updateStyles);
+          input.addEventListener('input', update);
         });
+      }
+      // ---------------------------------------------------------------
+
+
+      /**
+       * プロパティの値をプレビューとデータモデルの両方に反映する
+       * @private
+       */
+      _updatePropValue(propItem, item, targetId, selector, storageKey) {
+        const masterNode = this.logic.findNodeById(this.data, targetId);
+        const targetRoot = document.querySelector(`[${this.ctx.CONFIG.ATTRIBUTES.TREE_ID}="${targetId}"]`);
+        
+        // getValue は WebModuleUI が生成した要素に生やしているメソッド
+        const val = propItem.getValue();
+        const el = selector === "" ? targetRoot : targetRoot?.querySelector(selector);
+
+        // プレビュー(DOM)への反映
+        if (el) {
+          if (item.prop === 'custom-css') {
+            this._applyCustomCssWithPriority(el, val);
+          } else {
+            this._applyIndividualStyle(el, item.prop, val, targetId, selector);
+          }
+        }
+
+        // データモデルへの反映と保存
+        if (masterNode) {
+          if (!masterNode.attrs) masterNode.attrs = {};
+          masterNode.attrs[storageKey] = val;
+          this.saveToLocalStorage();
+        }
       }
       // ---------------------------------------------------------------
 
@@ -1357,6 +1312,29 @@ export class WebModuleBuilder {
           propItem.remove();
           this.saveToLocalStorage();
         };
+      }
+      // ---------------------------------------------------------------
+
+
+      /**
+       * 指定された親要素に対し、STYLE_DEFS の定義順に基づいて子要素を挿入する
+       * @private
+       */
+      _insertSortedPropItem(parent, newItem, currentProp) {
+        const currentIndex = this.ctx.STYLE_DEFS.findIndex(s => s.prop === currentProp);
+        const existingItems = Array.from(parent.querySelectorAll('.prop-input-item'));
+        
+        const nextItem = existingItems.find(el => {
+          const prop = el.getAttribute('data-p');
+          const index = this.ctx.STYLE_DEFS.findIndex(s => s.prop === prop);
+          return index > currentIndex;
+        });
+
+        if (nextItem) {
+          parent.insertBefore(newItem, nextItem);
+        } else {
+          parent.appendChild(newItem);
+        }
       }
       // ---------------------------------------------------------------
 
@@ -1495,6 +1473,29 @@ export class WebModuleBuilder {
       // ---------------------------------------------------------------
 
   // ---------------------------------------------------------------
+
+
+
+
+
+  /**
+   * ボトムシートの初期化とイベント登録
+   */
+  initBottomSheet() {
+    let sheet = document.getElementById('module-bottom-sheet');
+    if (!sheet) {
+      sheet = this.ui.createModuleBottomSheet();
+      document.body.appendChild(sheet);
+      
+      // イベントバインド
+      sheet.querySelector('.close-sheet').onclick = () => this.closeModuleSheet();
+      sheet.querySelector('.sheet-overlay').onclick = () => this.closeModuleSheet();
+      sheet.querySelector('#bulk-add-confirm-btn').onclick = () => this.executeBulkAdd();
+    }
+  }
+  // ---------------------------------------------------------------
+
+
 
 
 
@@ -1735,20 +1736,154 @@ export class WebModuleBuilder {
       return;
     }
 
-    // 1. コンテナをクリア
+    // コンテナをクリア
     container.innerHTML = "";
     
-    // 2. UIクラスから完成したツールバー要素を取得
-    // 第1引数に this (WebModuleBuilder) を渡すことで、UI側から各種メソッドを呼べるようにする
+    // UIクラスに生成を丸投げ
     const toolbarEl = this.ui.createToolbar(this);
     
-    // 3. DOMへのマウント
     if (toolbarEl) {
       container.appendChild(toolbarEl);
     }
   }
   // ---------------------------------------------------------------
 
+
+
+  /**
+   * ボトムシートを開く
+   */
+  openModuleSheet() {
+    let sheet = document.getElementById('module-bottom-sheet');
+    if (!sheet) {
+      sheet = this.ui.createModuleBottomSheet();
+      document.body.appendChild(sheet);
+      this._bindSheetEvents(sheet);
+    }
+
+    // ✅ 単一選択なので、常にここでクリア
+    this.selectedModuleCounts = {};
+
+    this._renderSheetGrid();
+
+    sheet.classList.remove('is-hidden');
+    setTimeout(() => sheet.classList.add('is-active'), 10);
+  }
+  // ---------------------------------------------------------------
+
+      /**
+       * シート内のグリッドを描画する（WebModuleUIのパーツを使用）
+       */
+      _renderSheetGrid() {
+        const grid = document.getElementById('sheet-module-grid');
+        if (!grid) return;
+        grid.innerHTML = "";
+
+        Object.entries(this.ctx.ELEMENT_DEFS).forEach(([key, def]) => {
+          const itemEl = this.ui.createSheetItem(key, def);
+
+          itemEl.onclick = () => {
+            const k = itemEl.dataset.key;
+            const isAlreadySelected = (this.selectedModuleCounts[k] === 1);
+
+            // ✅ まず全部解除（単一選択）
+            grid.querySelectorAll('.sheet-item.is-selected').forEach(el => {
+              el.classList.remove('is-selected');
+              const b = el.querySelector('.item-badge');
+              if (b) b.textContent = ""; // 表示消す
+            });
+            this.selectedModuleCounts = {};
+
+            // ✅ すでに選ばれてたなら「解除」で終わり
+            if (isAlreadySelected) {
+              this._updateSheetFooter();
+              return;
+            }
+
+            // ✅ そうでなければ、この1つだけ選択
+            this.selectedModuleCounts[k] = 1;
+            itemEl.classList.add('is-selected');
+            const badge = itemEl.querySelector('.item-badge');
+            if (badge) badge.textContent = "✓";
+
+            this._updateSheetFooter();
+          };
+
+          // 初期表示は未選択にする（badge消す）
+          const badge = itemEl.querySelector('.item-badge');
+          if (badge) badge.textContent = "";
+
+          grid.appendChild(itemEl);
+        });
+      }
+      // ---------------------------------------------------------------
+
+      /**
+       * シート内の「追加ボタン」などの状態更新
+       */
+      _updateSheetFooter() {
+        const btn = document.getElementById('bulk-add-confirm-btn');
+        const count = document.getElementById('selected-count');
+
+        const total = Object.values(this.selectedModuleCounts).reduce((a, b) => a + b, 0);
+
+        if (count) count.textContent = String(total);
+        if (btn) btn.disabled = total === 0;
+      }
+      // ---------------------------------------------------------------
+
+      /**
+       * ボトムシートのイベント紐付け（初回のみ）
+       */
+      _bindSheetEvents(sheet) {
+        sheet.querySelector('.close-sheet').onclick = () => this.closeModuleSheet();
+        sheet.querySelector('.sheet-overlay').onclick = () => this.closeModuleSheet();
+        sheet.querySelector('#bulk-add-confirm-btn').onclick = () => this.executeBulkAdd();
+      }
+      // ---------------------------------------------------------------
+
+  /**
+   * 選択したモジュールを一括でデータに追加
+   */
+  executeBulkAdd() {
+    const targetParentId = this.pendingAddParentId;
+
+    Object.entries(this.selectedModuleCounts).forEach(([type, qty]) => {
+      for (let i = 0; i < qty; i++) { // qtyは実質1
+        const newNode = this.createInitialData(type);
+        if (!newNode) continue;
+
+        if (targetParentId) {
+          const parentNode = this.logic.findNodeById(this.data, targetParentId);
+          if (parentNode) {
+            if (!Array.isArray(parentNode.children)) parentNode.children = [];
+            parentNode.children.push(newNode);
+          }
+        } else {
+          this.data.push(newNode);
+        }
+      }
+    });
+
+    this.pendingAddParentId = null;
+    this.selectedModuleCounts = {};
+    this.syncView();
+    this.saveToLocalStorage();
+    this.closeModuleSheet();
+  }
+  // ---------------------------------------------------------------
+
+  /**
+   * ボトムシートを閉じる
+   */
+  closeModuleSheet() {
+    const sheet = document.getElementById('module-bottom-sheet');
+    if (sheet) {
+      sheet.classList.remove('is-active');
+      setTimeout(() => sheet.classList.add('is-hidden'), 300);
+    }
+  }
+  // ---------------------------------------------------------------
 
 
 
