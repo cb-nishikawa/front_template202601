@@ -219,11 +219,13 @@ export class WebModuleUI {
     // color の場合は type="text" に変更し、クラス名 c-in を付与
     const html = `
       <div class="prop-input-item" data-p="${item.prop}">
-        <span class="prop-label">${this.escapeHtml(item.name)}</span>
-        ${item.type === 'color' ? 
-          `<input type="text" class="c-in" value="${numVal || '#ffffff'}" placeholder="#ffffff" data-tree-ignore>` : 
-          `<input type="number" class="n-in" value="${numVal}" data-tree-ignore>
-           <select class="u-in" data-tree-ignore>${unitOptions}</select>`
+        ${item.type === 'textarea' ? 
+          `<textarea class="t-in" data-tree-ignore style="width:100%; height:80px; font-family:monospace; font-size:12px; margin-top:5px;">${fullVal}</textarea>` :
+          (item.type === 'color' ? 
+            `<input type="text" class="c-in" value="${fullVal || '#ffffff'}" placeholder="#ffffff" data-tree-ignore>` : 
+            `<input type="number" class="n-in" value="${numVal}" data-tree-ignore>
+             <select class="u-in" data-tree-ignore>${unitOptions}</select>`
+          )
         }
         <button type="button" class="del-p" data-tree-ignore>×</button>
       </div>`.trim();
@@ -235,6 +237,7 @@ export class WebModuleUI {
      * WebModuleBuilder.js の updateStyles から呼び出されます
      */
     div.getValue = () => {
+      if (item.type === 'textarea') return div.querySelector('.t-in').value
       if (item.type === 'color') {
         // テキストボックスの値をそのまま（#ffffff等）返す
         return div.querySelector('.c-in').value;
@@ -251,7 +254,7 @@ export class WebModuleUI {
   }
   // ---------------------------------------------------------------
 
-  
+
 
   /**
    * HTMLエスケープ（安全のため）

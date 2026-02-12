@@ -143,7 +143,8 @@ export const STYLE_DEFS = [
   { prop: "padding-top", name: "上余白", type: "number" },
   { prop: "padding-bottom", name: "下余白", type: "number" },
   { prop: "font-size", name: "文字サイズ", type: "number" },
-  { prop: "color", name: "文字色", type: "color" }
+  { prop: "color", name: "文字色", type: "color" },
+  { prop: "custom-css", name: "自由なCSS", type: "textarea" }
 ];
 
 document.addEventListener('DOMContentLoaded', () => {

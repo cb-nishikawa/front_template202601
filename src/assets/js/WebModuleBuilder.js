@@ -162,22 +162,39 @@ export class WebModuleBuilder {
     el.setAttribute(this.ctx.CONFIG.ATTRIBUTES.MODULE, nodeData.type);
 
    // --- 【修正ここから】ターゲット別のスタイル復元 ---
-    if (nodeData.attrs) {
+   if (nodeData.attrs) {
+      // ターゲット（selector）ごとに、個別設定と自由設定を分けて処理する
+      const targetMap = {};
+
       Object.keys(nodeData.attrs).forEach(key => {
-        // key が "selector:prop" (例: ".wrapper:background-color") の形式か確認
-        if (key.includes(':')) {
-          const [selector, prop] = key.split(':');
-          // 対象要素の特定（空ならルート自身、あればその子要素）
-          const targetEl = selector === "" ? el : el.querySelector(selector);
-          
-          if (targetEl) {
-            const val = nodeData.attrs[key];
+        if (!key.includes(':')) return;
+        const [selector, prop] = key.split(':');
+        if (!targetMap[selector]) targetMap[selector] = { individuals: [], custom: "" };
+
+        if (prop === 'custom-css') {
+          targetMap[selector].custom = nodeData.attrs[key];
+        } else {
+          targetMap[selector].individuals.push({ prop, val: nodeData.attrs[key] });
+        }
+      });
+
+      // まとめたデータをDOMに適用
+      Object.keys(targetMap).forEach(selector => {
+        const targetEl = selector === "" ? el : el.querySelector(selector);
+        if (targetEl) {
+          // 1. 個別設定を先に適用
+          targetMap[selector].individuals.forEach(item => {
             const safeSelector = selector.replace(/\./g, '-');
-            const uniqueVar = `--id-${nodeData.id}${safeSelector}-${prop}`;
-            
-            // ID付き変数と実プロパティの両方を復元
-            targetEl.style.setProperty(uniqueVar, val);
-            targetEl.style.setProperty(prop, `var(${uniqueVar})`);
+            const uniqueVar = `--id-${nodeData.id}${safeSelector}-${item.prop}`;
+            targetEl.style.setProperty(uniqueVar, item.val);
+            targetEl.style.setProperty(item.prop, `var(${uniqueVar})`);
+          });
+
+          // 2. 最後に自由入力を結合（これで優先順位が最強になる）
+          if (targetMap[selector].custom) {
+            targetEl.style.cssText += "; " + targetMap[selector].custom;
+            // パネルを開いた時のために、前回値として保存
+            targetEl.dataset.lastCustomCss = targetMap[selector].custom;
           }
         }
       });
@@ -581,7 +598,7 @@ export class WebModuleBuilder {
       addRow.style.marginBottom = '10px';
       const sel = document.createElement('select');
       sel.style.width = '100%';
-      sel.innerHTML = `<option value="">+ ${target.name}にスタイルを追加</option>` + 
+      sel.innerHTML = `<option value="">+ スタイルを追加</option>` + 
                       this.ctx.STYLE_DEFS.map(s => `<option value='${JSON.stringify(s)}'>${s.name}</option>`).join('');
       
       const listContainer = document.createElement('div');
@@ -815,66 +832,106 @@ export class WebModuleBuilder {
    */
   // ---------------------------------------------------------------
   addPropInput(item, parent, targetId, fullVal = "", selector = "") {
-    const storageKey = `${selector}:${item.prop}`;
-    // 二重追加防止
-    if (parent.querySelector(`[data-storage-key="${storageKey.replace(/:/g, '\\:')}"]`)) return;
-    
-    const propItem = this.ui.createPropInputItem(item, fullVal);
-    propItem.setAttribute('data-storage-key', storageKey);
-    
-    const masterNode = this.logic.findNodeById(this.data, targetId);
-    const targetRoot = document.querySelector(`[${this.ctx.CONFIG.ATTRIBUTES.TREE_ID}="${targetId}"]`);
+      const storageKey = `${selector}:${item.prop}`;
+      const escapedKey = storageKey.replace(/:/g, '\\:').replace(/\./g, '\\.');
+      if (parent.querySelector(`[data-storage-key="${escapedKey}"]`)) return;
+      
+      const propItem = this.ui.createPropInputItem(item, fullVal);
+      propItem.setAttribute('data-storage-key', storageKey);
+      
+      const masterNode = this.logic.findNodeById(this.data, targetId);
+      const targetRoot = document.querySelector(`[${this.ctx.CONFIG.ATTRIBUTES.TREE_ID}="${targetId}"]`);
 
-    const updateStyles = () => {
-      const val = propItem.getValue();
-      if (targetRoot) {
-        const el = selector === "" ? targetRoot : targetRoot.querySelector(selector);
-        if (el) {
-          const safeSelector = selector.replace(/\./g, '-');
-          const uniqueVar = `--id-${targetId}${safeSelector}-${item.prop}`;
-          el.style.setProperty(uniqueVar, val);
-          el.style.setProperty(item.prop, `var(${uniqueVar})`);
+      // スタイル更新のメインロジック
+      const updateStyles = () => {
+        const val = propItem.getValue();
+        if (targetRoot) {
+          const el = selector === "" ? targetRoot : targetRoot.querySelector(selector);
+          if (el) {
+            if (item.prop === 'custom-css') {
+              // --- 自由なCSSの適用（優先順位：最強） ---
+              // 個別設定（--id-）だけを抜き出す
+              const individualStyles = el.style.cssText.split(';').filter(s => {
+                const t = s.trim();
+                return t && (t.startsWith('--id') || t.includes('var(--id'));
+              }).join('; ');
+
+              // ★ 自由入力（val）を「後ろ」に結合する
+              // これにより、個別エリアと同じプロパティがあっても自由入力が勝ちます
+              el.style.cssText = `${individualStyles}; ${val}`;
+              el.dataset.lastCustomCss = val; 
+            } else {
+              // --- 個別プロパティの適用 ---
+              const safeSelector = selector.replace(/\./g, '-');
+              const uniqueVar = `--id-${targetId}${safeSelector}-${item.prop}`;
+              
+              // 個別設定をセット
+              el.style.setProperty(uniqueVar, val);
+              el.style.setProperty(item.prop, `var(${uniqueVar})`);
+
+              // ★ 個別設定を更新した際も、もし自由入力があればそれを最後にくっつけ直す
+              // これをしないと、個別設定をいじった瞬間に順番が入れ替わってしまうため
+              const customCss = el.dataset.lastCustomCss;
+              if (customCss) {
+                // 一旦個別設定が反映されたあとの cssText の末尾に再結合
+                el.style.cssText = el.style.cssText + "; " + customCss;
+              }
+            }
+          }
         }
-      }
 
-      // マスターデータ(JSON)を更新して保存
-      if (masterNode) {
-        if (!masterNode.attrs) masterNode.attrs = {};
-        masterNode.attrs[storageKey] = val;
-        this.saveToLocalStorage(); // ★ここで物理保存
-      }
-    };
+        if (masterNode) {
+          if (!masterNode.attrs) masterNode.attrs = {};
+          masterNode.attrs[storageKey] = val;
+          this.saveToLocalStorage();
+        }
+      };
 
-    // 新規追加時（値が空の時）は即時反映＆保存
-    if (fullVal === "") {
-      updateStyles();
+      if (fullVal !== "") setTimeout(updateStyles, 10);
+      propItem.querySelectorAll('input, select, textarea').forEach(input => {
+        input.addEventListener('input', updateStyles);
+      });
+      
+      // --- 削除ボタンの修正 ---
+      propItem.querySelector('.del-p').onclick = () => {
+        if (targetRoot) {
+          const el = selector === "" ? targetRoot : targetRoot.querySelector(selector);
+          if (el) {
+            if (item.prop === 'custom-css') {
+              // 自由入力自体を消去
+              const lastCss = el.dataset.lastCustomCss || "";
+              el.style.cssText = el.style.cssText.replace(lastCss, "").trim();
+              delete el.dataset.lastCustomCss;
+            } else {
+              // 通常プロパティを消去
+              const safeSelector = selector.replace(/\./g, '-');
+              el.style.removeProperty(`--id-${targetId}${safeSelector}-${item.prop}`);
+              el.style.removeProperty(item.prop);
+
+              // ★重要：削除後に「自由なCSS」が残っていれば再適用する
+              // これにより「上間隔」を消した瞬間に「自由なCSS」のmarginが有効になる
+              const customCssKey = `${selector}:custom-css`;
+              if (masterNode.attrs && masterNode.attrs[customCssKey]) {
+                  const customVal = masterNode.attrs[customCssKey];
+                  // 自由入力分以外のスタイルを抽出
+                  const currentIndividual = el.style.cssText.split(';').filter(s => {
+                      const t = s.trim();
+                      return t && !t.startsWith('--id') && !t.includes('var(--id');
+                  }).join('; ');
+                  // 自由入力を先頭にして再構成
+                  const otherStyles = el.style.cssText.replace(currentIndividual, "");
+                  el.style.cssText = `${customVal}; ${otherStyles}`;
+              }
+            }
+          }
+        }
+        if (masterNode?.attrs) delete masterNode.attrs[storageKey];
+        propItem.remove();
+        this.saveToLocalStorage();
+      };
+
+      parent.prepend(propItem); 
     }
-
-    // 入力イベントに紐付け
-    propItem.querySelectorAll('input, select').forEach(el => {
-      el.oninput = () => updateStyles();
-    });
-    
-    // 削除ボタン
-    propItem.querySelector('.del-p').onclick = () => {
-      if (targetRoot) {
-        const el = selector === "" ? targetRoot : targetRoot.querySelector(selector);
-        if (el) {
-          const safeSelector = selector.replace(/\./g, '-');
-          el.style.removeProperty(`--id-${targetId}${safeSelector}-${item.prop}`);
-          el.style.removeProperty(item.prop);
-        }
-      }
-      if (masterNode?.attrs) {
-        delete masterNode.attrs[storageKey];
-        this.saveToLocalStorage(); // ★削除時も保存
-      }
-      propItem.remove();
-    };
-
-    // ボタンのすぐ下に表示されるように prepend
-    parent.prepend(propItem); 
-  }
   // ---------------------------------------------------------------
 
 
