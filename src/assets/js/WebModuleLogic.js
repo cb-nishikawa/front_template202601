@@ -51,6 +51,28 @@ export class WebModuleLogic {
 
 
 
+
+  /**
+   * 子要素を再帰する「中身のコンテナ」を返す
+   * - 要素自体が data-drop-zone を持つ → その要素がコンテナ
+   * - テンプレ内にダミーの data-drop-zone がある → その親要素が実コンテナ
+   */
+  getDropZoneContainer(el) {
+    const dzAttr = this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE;
+
+    // 1) 自分がドロップゾーンなら、自分が中身のコンテナ
+    if (el.hasAttribute(dzAttr)) return el;
+
+    // 2) 内部にドロップゾーン(ダミー)があるなら「その親」が実際に子が積まれる場所
+    const dz = el.querySelector(`[${dzAttr}]`);
+    if (!dz) return el;
+
+    return dz.parentElement || el;
+  }
+  // ---------------------------------------------------------------
+
+
+
   // WebModuleLogic.js 内の buildModuleTree メソッド周辺
   extractContent(el) {
     // 編集対象の要素を探す

@@ -8,7 +8,7 @@ export class WebModuleBuilder {
     this.logic = new WebModuleLogic(this.ctx);
     this.ui = new WebModuleUI(this);
 
-    // ✅ マスター（深いJSON）
+    // ✅ ページ対応マスター
     const pageId = "page-" + Math.random().toString(36).slice(2, 9);
     this.project = {
       version: 2,
@@ -18,7 +18,7 @@ export class WebModuleBuilder {
       ]
     };
 
-    // ✅ ショートカット（常に active page の tree を指す）
+    // ✅ 既存互換（処理は今まで通り this.data を使わせる）
     this.data = this._getActivePage().tree;
 
     this.previewDragEnabled = false;
@@ -36,7 +36,6 @@ export class WebModuleBuilder {
   }
 
   _syncActiveDataRef() {
-    // this.data を必ず active page の tree に合わせる
     this.data = this._getActivePage().tree;
   }
 
@@ -45,21 +44,22 @@ export class WebModuleBuilder {
    * ビルダーの初期化
    */
   init() {
-    this.renderToolbar();
     const previewRoot = document.querySelector(this.ctx.CONFIG.SELECTORS.CONTAINER_INNER);
 
-    // ✅ まず保存済み project を復元
+    // ✅ 先に復元（project/pages が確定する）
     const hasSaved = this.loadFromLocalStorage();
 
-    // ✅ 無ければDOMから作る（active page に入れる）
+    // ✅ toolbar は project 復元後に描画（ページ一覧が反映される）
+    this.renderToolbar();
+
+    // 保存が無いときだけHTMLから初期ページを作る
     if (!hasSaved && previewRoot && previewRoot.children.length > 0) {
       this._getActivePage().tree = this.logic.buildModuleTree(previewRoot);
       this._syncActiveDataRef();
-      this.saveToLocalStorage();
     }
 
     this.syncView();
-    window.addEventListener("keydown", this.handleKeyDown);
+    window.addEventListener('keydown', this.handleKeyDown);
   }
   // ---------------------------------------------------------------
 
@@ -76,12 +76,9 @@ export class WebModuleBuilder {
 
     this._refreshInternalData(treeData, previewRoot);
     this._renderPreview(previewRoot);
-
     this.renderSidebar(this.data);
 
-    // ✅ ここで保存（リロードで消えない）
     this.saveToLocalStorage();
-
     this.initPreviewSortable();
   }
   // ---------------------------------------------------------------
@@ -95,18 +92,15 @@ export class WebModuleBuilder {
        * @private
        */
       _refreshInternalData(treeData, previewRoot) {
+        // ✅ 外部から tree が渡された場合だけ更新
         if (treeData) {
-          // 外から来たデータは active page の tree として採用
           this._getActivePage().tree = JSON.parse(JSON.stringify(treeData));
           this._syncActiveDataRef();
           return;
         }
 
-        // tree が空ならDOMから復元
-        if (this.data.length === 0) {
-          this._getActivePage().tree = this.logic.buildModuleTree(previewRoot);
-          this._syncActiveDataRef();
-        }
+        // ✅ ページ構造では「DOMからの自動復元をしない」
+        // 空ページは空のまま維持
       }
       // ---------------------------------------------------------------
 
@@ -353,6 +347,78 @@ export class WebModuleBuilder {
       }
 
       // ---------------------------------------------------------------
+
+
+
+
+
+
+  addPage(title = null) {
+    const id = "page-" + Math.random().toString(36).slice(2, 9);
+    const t = (title && title.trim()) ? title.trim() : `ページ${this.project.pages.length + 1}`;
+
+    this.project.pages.push({ id, title: t, tree: [] });
+    this.project.activePageId = id;
+
+    this._syncActiveDataRef();
+
+    // UI更新（selectの中身を更新したいので）
+    this.renderToolbar();
+    this.syncView();
+  }
+  // ---------------------------------------------------------------
+
+
+  deletePage(pageId) {
+    const pages = this.project.pages;
+    if (!Array.isArray(pages) || pages.length <= 1) {
+      alert("最後の1ページは削除できません。");
+      return;
+    }
+
+    const idx = pages.findIndex(p => p.id === pageId);
+    if (idx === -1) return;
+
+    const pageTitle = pages[idx].title || "ページ";
+    const ok = confirm(`「${pageTitle}」を削除します。よろしいですか？`);
+    if (!ok) return;
+
+    const deletingActive = (this.project.activePageId === pageId);
+
+    // 削除
+    pages.splice(idx, 1);
+
+    // アクティブを調整（削除したのがactiveなら近いページへ）
+    if (deletingActive) {
+      const next = pages[idx] || pages[idx - 1] || pages[0];
+      this.project.activePageId = next.id;
+    }
+
+    // 参照を同期
+    this._syncActiveDataRef();
+
+    // UI更新
+    this.renderToolbar();
+    this.syncView();
+    this.saveToLocalStorage();
+  }
+  // ---------------------------------------------------------------
+
+
+
+
+
+  setActivePage(pageId) {
+    if (!this.project.pages.some(p => p.id === pageId)) return;
+
+    this.project.activePageId = pageId;
+    this._syncActiveDataRef();
+
+    // UI更新（select表示更新）
+    this.renderToolbar();
+    this.syncView();
+  }
+  // ---------------------------------------------------------------
 
 
       
@@ -1629,13 +1695,10 @@ export class WebModuleBuilder {
    * 現在のデータツリーをJSONファイルとしてシリアライズし、ブラウザからダウンロードする
    */
   exportJSON() {
-    // 1. データのJSON化（インデント付きで見やすく）
-    const jsonString = JSON.stringify(this.data, null, 2);
-    
-    // 2. ユニークなファイル名の生成
-    const fileName = this._generateExportFileName('json');
+    // ✅ ページを含む全体を書き出す
+    const jsonString = JSON.stringify(this.project, null, 2);
 
-    // 3. ダウンロード処理の実行
+    const fileName = this._generateExportFileName('json');
     this._downloadFile(jsonString, fileName, 'application/json');
   }
   // ---------------------------------------------------------------
@@ -1962,24 +2025,39 @@ export class WebModuleBuilder {
        * @private
        */
       _applyImportedData(importedData) {
-        if (!Array.isArray(importedData)) {
-          throw new Error('Invalid data format: Expected an array.');
-        }
+        // ✅ project形式
+        if (importedData && Array.isArray(importedData.pages)) {
 
-        if (confirm('現在の内容が上書きされます。よろしいですか？')) {
-          // マスターデータを更新
-          this.data = importedData;
+          if (!confirm('現在の内容が上書きされます。よろしいですか？')) return;
 
-          // 履歴（Undo/Redo用）への記録（履歴管理メソッドがある場合）
-          if (this.historyStack) {
-            this.historyStack.push(JSON.parse(JSON.stringify(this.data)));
+          this.project = importedData;
+
+          // activePageId 修復
+          if (!this.project.pages.some(p => p.id === this.project.activePageId)) {
+            this.project.activePageId = this.project.pages[0].id;
           }
 
-          // 画面の同期とローカルストレージ保存
+          this._syncActiveDataRef();
+          this.renderToolbar();
           this.syncView();
-          
-          alert('データを正常に復元しました。');
+          alert('プロジェクトを復元しました。');
+          return;
         }
+
+        // ✅ tree形式（今のページだけ置き換え）
+        if (Array.isArray(importedData)) {
+
+          if (!confirm('現在のページを上書きします。よろしいですか？')) return;
+
+          this._getActivePage().tree = importedData;
+          this._syncActiveDataRef();
+          this.syncView();
+          alert('ページを復元しました。');
+          return;
+        }
+
+        // ❌ 不正
+        alert('JSON形式が不正です');
       }
       // ---------------------------------------------------------------
 
@@ -2010,11 +2088,9 @@ export class WebModuleBuilder {
    * データをブラウザの localStorage に保存する
    */
   saveToLocalStorage() {
-    try {
-      localStorage.setItem("wmb_project_v2", JSON.stringify(this.project));
-    } catch (e) {
-      console.error("saveToLocalStorage failed:", e);
-    }
+    const dataString = JSON.stringify(this.project);
+    localStorage.setItem('web_module_builder_data', dataString);
+    console.log('データをローカルに保存しました');
   }
   // ---------------------------------------------------------------
 
@@ -2025,25 +2101,26 @@ export class WebModuleBuilder {
    * localStorage からデータを復元する
    */
   loadFromLocalStorage() {
-    const raw = localStorage.getItem("wmb_project_v2");
-    if (!raw) return false;
+    const savedData = localStorage.getItem('web_module_builder_data');
+    if (!savedData) return false;
 
     try {
-      const parsed = JSON.parse(raw);
+      const parsed = JSON.parse(savedData);
 
-      // 最低限の形チェック（旧は考えない）
-      if (!parsed || !Array.isArray(parsed.pages) || !parsed.pages.length) return false;
+      // ✅ v2前提：pagesが無いなら失敗扱い（旧は考えない）
+      if (!parsed || !Array.isArray(parsed.pages) || parsed.pages.length === 0) return false;
 
       this.project = parsed;
 
-      // activePageId が壊れてたら先頭に寄せる
-      const ok = this.project.pages.some(p => p.id === this.project.activePageId);
-      if (!ok) this.project.activePageId = this.project.pages[0].id;
+      // activeが壊れてたら先頭に寄せる
+      if (!this.project.pages.some(p => p.id === this.project.activePageId)) {
+        this.project.activePageId = this.project.pages[0].id;
+      }
 
       this._syncActiveDataRef();
       return true;
     } catch (e) {
-      console.error("loadFromLocalStorage failed:", e);
+      console.error("データの復元に失敗しました", e);
       return false;
     }
   }

@@ -264,6 +264,10 @@ export class WebModuleUI {
    * @param {WebModuleBuilder} builder - メソッド呼び出し用のインスタンス
    */
   createToolbar(builder) {
+    const pageOptions = (builder.project?.pages || [])
+      .map(p => `<option value="${p.id}" ${p.id === builder.project.activePageId ? "selected" : ""}>${p.title}</option>`)
+      .join("");
+
     const html = `
       <div class="toolbar-inner">
         <div class="toolbar-group">
@@ -271,7 +275,16 @@ export class WebModuleUI {
           <button type="button" id="import-btn" class="toolbar-btn">インポート</button>
           <button type="button" id="clear-btn" class="toolbar-btn btn-danger">初期化</button>
         </div>
-        
+
+        <!-- ✅ 追加：ページ選択/追加/削除 -->
+        <div class="toolbar-group">
+          <select id="page-select" class="toolbar-btn" style="height:32px;">
+            ${pageOptions}
+          </select>
+          <button type="button" id="add-page-btn" class="toolbar-btn">＋ページ</button>
+          <button type="button" id="del-page-btn" class="toolbar-btn btn-danger">🗑 ページ削除</button>
+        </div>
+
         <div class="toolbar-group">
           <label class="toggle-switch-inline">
             <input type="checkbox" id="preview-drag-toggle">
@@ -286,21 +299,39 @@ export class WebModuleUI {
     temp.innerHTML = html;
     const toolbarEl = temp.firstElementChild;
 
-    // トグルのイベント
+    // トグル
     const toggle = toolbarEl.querySelector('#preview-drag-toggle');
-    if (toggle) {
-      toggle.onchange = (e) => builder.togglePreviewDrag(e.target.checked);
-    }
+    if (toggle) toggle.onchange = (e) => builder.togglePreviewDrag(e.target.checked);
 
-    // 既存ボタンのイベント
+    // 既存ボタン
     toolbarEl.querySelector('#export-btn').onclick = () => builder.exportJSON();
     toolbarEl.querySelector('#import-btn').onclick = () => builder.importJSON();
     toolbarEl.querySelector('#clear-btn').onclick = () => builder.clearLocalStorage();
 
-    // 💡 追加：ボトムシートを起動するイベントを紐付け
-    const openSheetBtn = toolbarEl.querySelector('#open-sheet-btn');
-    if (openSheetBtn) {
-      openSheetBtn.onclick = () => builder.openModuleSheet();
+    // ✅ ページ切替
+    const pageSel = toolbarEl.querySelector('#page-select');
+    if (pageSel) {
+      pageSel.onchange = (e) => builder.setActivePage(e.target.value);
+    }
+
+    // ✅ ページ追加
+    const addPageBtn = toolbarEl.querySelector('#add-page-btn');
+    if (addPageBtn) {
+      addPageBtn.onclick = () => {
+        const name = prompt("ページ名を入力", `ページ${builder.project.pages.length + 1}`);
+        builder.addPage(name);
+      };
+    }
+
+    const delPageBtn = toolbarEl.querySelector('#del-page-btn');
+    if (delPageBtn) {
+      delPageBtn.onclick = () => {
+        const currentId = builder.project.activePageId;
+        builder.deletePage(currentId);
+      };
+
+      // 最後の1ページならボタン無効化（UX）
+      delPageBtn.disabled = (builder.project.pages.length <= 1);
     }
 
     return toolbarEl;
