@@ -7,9 +7,19 @@ export class WebModuleBuilder {
     this.ctx = { ...options, LABELS: options.CONFIG.LABELS };
     this.logic = new WebModuleLogic(this.ctx);
     this.ui = new WebModuleUI(this);
-    
-    // マスターデータ（JSON）。この配列がページのすべてを決定します。
-    this.data = []; 
+
+    // ✅ マスター（深いJSON）
+    const pageId = "page-" + Math.random().toString(36).slice(2, 9);
+    this.project = {
+      version: 2,
+      activePageId: pageId,
+      pages: [
+        { id: pageId, title: "ページ1", tree: [] }
+      ]
+    };
+
+    // ✅ ショートカット（常に active page の tree を指す）
+    this.data = this._getActivePage().tree;
 
     this.previewDragEnabled = false;
     this.historyStack = [];
@@ -20,24 +30,36 @@ export class WebModuleBuilder {
     this.sheetAllowDuplicates = false;
   }
 
+  _getActivePage() {
+    const p = this.project.pages.find(x => x.id === this.project.activePageId);
+    return p || this.project.pages[0];
+  }
+
+  _syncActiveDataRef() {
+    // this.data を必ず active page の tree に合わせる
+    this.data = this._getActivePage().tree;
+  }
+
 
   /**
    * ビルダーの初期化
    */
   init() {
-    this.renderToolbar(); 
+    this.renderToolbar();
     const previewRoot = document.querySelector(this.ctx.CONFIG.SELECTORS.CONTAINER_INNER);
-    
-    // ★修正：まずローカルストレージからの読み込みを試みる
-    const hasSavedData = this.loadFromLocalStorage();
 
-    // 保存データがなかった場合のみ、既存のHTMLから読み込む
-    if (!hasSavedData && previewRoot && previewRoot.children.length > 0) {
-      this.data = this.logic.buildModuleTree(previewRoot);
+    // ✅ まず保存済み project を復元
+    const hasSaved = this.loadFromLocalStorage();
+
+    // ✅ 無ければDOMから作る（active page に入れる）
+    if (!hasSaved && previewRoot && previewRoot.children.length > 0) {
+      this._getActivePage().tree = this.logic.buildModuleTree(previewRoot);
+      this._syncActiveDataRef();
+      this.saveToLocalStorage();
     }
 
     this.syncView();
-    window.addEventListener('keydown', this.handleKeyDown);
+    window.addEventListener("keydown", this.handleKeyDown);
   }
   // ---------------------------------------------------------------
 
@@ -47,22 +69,19 @@ export class WebModuleBuilder {
    * @param {Object[]|null} [treeData=null] - 外部から提供される新しいツリーデータ
    */
   syncView(treeData = null) {
+    this._syncActiveDataRef();
+
     const previewRoot = document.querySelector(this.ctx.CONFIG.SELECTORS.CONTAINER_INNER);
     if (!previewRoot) return;
 
-    // 1. 内部データの正規化・更新
     this._refreshInternalData(treeData, previewRoot);
-
-    // 2. プレビューエリア（中央）の再描画
     this._renderPreview(previewRoot);
 
-    // 3. サイドバー（左側）の再描画
     this.renderSidebar(this.data);
 
-    // 4. データの永続化
+    // ✅ ここで保存（リロードで消えない）
     this.saveToLocalStorage();
 
-    // 5. インタラクション（ドラッグ＆ドロップ）の再初期化
     this.initPreviewSortable();
   }
   // ---------------------------------------------------------------
@@ -77,11 +96,16 @@ export class WebModuleBuilder {
        */
       _refreshInternalData(treeData, previewRoot) {
         if (treeData) {
-          // 参照を切るためにディープコピー
-          this.data = JSON.parse(JSON.stringify(treeData));
-        } else if (this.data.length === 0) {
-          // データが空の場合はDOMから構造を解析して復元
-          this.data = this.logic.buildModuleTree(previewRoot);
+          // 外から来たデータは active page の tree として採用
+          this._getActivePage().tree = JSON.parse(JSON.stringify(treeData));
+          this._syncActiveDataRef();
+          return;
+        }
+
+        // tree が空ならDOMから復元
+        if (this.data.length === 0) {
+          this._getActivePage().tree = this.logic.buildModuleTree(previewRoot);
+          this._syncActiveDataRef();
         }
       }
       // ---------------------------------------------------------------
@@ -1986,9 +2010,11 @@ export class WebModuleBuilder {
    * データをブラウザの localStorage に保存する
    */
   saveToLocalStorage() {
-    const dataString = JSON.stringify(this.data);
-    localStorage.setItem('web_module_builder_data', dataString);
-    console.log('データをローカルに保存しました');
+    try {
+      localStorage.setItem("wmb_project_v2", JSON.stringify(this.project));
+    } catch (e) {
+      console.error("saveToLocalStorage failed:", e);
+    }
   }
   // ---------------------------------------------------------------
 
@@ -1999,17 +2025,27 @@ export class WebModuleBuilder {
    * localStorage からデータを復元する
    */
   loadFromLocalStorage() {
-    const savedData = localStorage.getItem('web_module_builder_data');
-    if (savedData) {
-      try {
-        this.data = JSON.parse(savedData);
-        this.syncView();
-        return true;
-      } catch (e) {
-        console.error("データの復元に失敗しました", e);
-      }
+    const raw = localStorage.getItem("wmb_project_v2");
+    if (!raw) return false;
+
+    try {
+      const parsed = JSON.parse(raw);
+
+      // 最低限の形チェック（旧は考えない）
+      if (!parsed || !Array.isArray(parsed.pages) || !parsed.pages.length) return false;
+
+      this.project = parsed;
+
+      // activePageId が壊れてたら先頭に寄せる
+      const ok = this.project.pages.some(p => p.id === this.project.activePageId);
+      if (!ok) this.project.activePageId = this.project.pages[0].id;
+
+      this._syncActiveDataRef();
+      return true;
+    } catch (e) {
+      console.error("loadFromLocalStorage failed:", e);
+      return false;
     }
-    return false;
   }
   // ---------------------------------------------------------------
 
