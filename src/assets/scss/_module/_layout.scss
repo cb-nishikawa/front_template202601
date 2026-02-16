@@ -222,3 +222,67 @@ $bp-config: (
         margin-bottom: var(--title-margin-bottom, 0);
     }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+@mixin layout-width($cols, $gap) {
+    width: calc(
+        (100% - (#{$gap} * ((#{$cols}) - 1)))
+        / (#{$cols})
+    );
+}
+
+
+@mixin l-layout01 {
+    $type: "layout";
+    @include defaultVar($type);
+
+    --layout-grid: 2; // デフォルトの列数を指定
+    --layout-gap: 20px;
+
+    margin-bottom: var(--layout-margin-bottom, 16px);
+    &:first-child {
+        margin-top: var(--title-margin-top, 0);
+    }
+
+    &:last-child {
+        margin-bottom: var(--title-margin-bottom, 0);
+    }
+
+    & > .wrapper > .inner {
+        gap: var(--layout-gap, 20px);
+    }
+    
+    &>.wrapper {
+        &>.inner {
+            @include cssVar(($type, "inner"), display, flex);
+            @include cssVar(($type, "inner"), flex-wrap, wrap);
+
+            &>.block {
+                @include cssVar(($type, "block"), display, block);
+
+                --image-width: 100%;
+                @include layout-width(var(--layout-grid, 2), var(--layout-gap, 20px));
+            }
+        }
+    }
+
+   
+}
+
+[data-module*="l-layout01"] {
+    @include l-layout01;
+}
+

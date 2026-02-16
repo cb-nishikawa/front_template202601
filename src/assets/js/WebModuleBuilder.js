@@ -184,14 +184,22 @@ export class WebModuleBuilder {
       _applyNodeStyles(el, nodeData) {
         if (!nodeData.attrs) return;
 
+        // ✅ カスタムプロパティ名として安全なトークンにする
+        const toSafeToken = (s = "") =>
+          String(s)
+            .trim()
+            .replace(/[^a-zA-Z0-9_-]/g, "-") // 危険文字を全部 "-"" に
+            .replace(/-+/g, "-")
+            .replace(/^-|-$/g, "");
+
         // ターゲット(selector)ごとにスタイルを分類
         const targetMap = {};
-        Object.keys(nodeData.attrs).forEach(key => {
-          if (!key.includes(':')) return;
-          const [selector, prop] = key.split(':');
+        Object.keys(nodeData.attrs).forEach((key) => {
+          if (!key.includes(":")) return;
+          const [selector, prop] = key.split(":");
           if (!targetMap[selector]) targetMap[selector] = { individuals: [], custom: "" };
 
-          if (prop === 'custom-css') {
+          if (prop === "custom-css") {
             targetMap[selector].custom = nodeData.attrs[key];
           } else {
             targetMap[selector].individuals.push({ prop, val: nodeData.attrs[key] });
@@ -199,30 +207,32 @@ export class WebModuleBuilder {
         });
 
         // 各ターゲットに対してスタイルを適用
-        Object.keys(targetMap).forEach(selector => {
+        Object.keys(targetMap).forEach((selector) => {
           const targetEl = selector === "" ? el : el.querySelector(selector);
-          if (targetEl) {
-            // 1. 個別設定を適用（CSS変数経由）
-            targetMap[selector].individuals.forEach(item => {
-              const safeSelector = selector.replace(/\./g, '-');
-              const uniqueVar = `--id-${nodeData.id}${safeSelector}-${item.prop}`;
-              targetEl.style.setProperty(uniqueVar, item.val);
-              targetEl.style.setProperty(item.prop, `var(${uniqueVar})`);
-            });
+          if (!targetEl) return;
 
-            // 2. 自由CSSを最後に結合（最強の優先順位を確保）
-            if (targetMap[selector].custom) {
-              targetEl.style.cssText += "; " + targetMap[selector].custom;
-              // 再編集時のために値を保持
-              targetEl.dataset.lastCustomCss = targetMap[selector].custom;
-            }
+          // 1) 個別設定を適用（CSS変数経由）
+          targetMap[selector].individuals.forEach((item) => {
+            const safeSel = selector ? `-${toSafeToken(selector)}` : "";
+            const safeProp = toSafeToken(item.prop);
+
+            const uniqueVar = `--id-${nodeData.id}${safeSel}-${safeProp}`;
+
+            targetEl.style.setProperty(uniqueVar, item.val);
+            targetEl.style.setProperty(item.prop, `var(${uniqueVar})`);
+          });
+
+          // 2) 自由CSS（最後に適用）
+          if (targetMap[selector].custom) {
+            targetEl.style.cssText += "; " + targetMap[selector].custom;
+            targetEl.dataset.lastCustomCss = targetMap[selector].custom;
           }
         });
 
-        // 旧来のstylesプロパティがある場合の互換性維持
+        // 旧来のstylesプロパティがある場合の互換性維持（ここはそのままでOK）
         if (nodeData.styles) {
-          const pref = nodeData.type?.startsWith('m-') ? "module" : "layout";
-          Object.keys(nodeData.styles).forEach(prop => {
+          const pref = nodeData.type?.startsWith("m-") ? "module" : "layout";
+          Object.keys(nodeData.styles).forEach((prop) => {
             el.style.setProperty(`--${pref}-${prop}`, nodeData.styles[prop]);
           });
         }

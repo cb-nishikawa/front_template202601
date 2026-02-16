@@ -24,7 +24,53 @@ export const CONFIG = {
 
 export const ELEMENT_DEFS = {
 
-  // --- グリッドセット（コンテナ系） ---
+  // --- ベースレイアウト（コンテナ系） ---
+  'l-layout01': {
+    label: 'レイアウト', 
+    tag: 'div',
+    default: 'm-text01', 
+    schema: {
+      // 'grid': { label: '列数', type: 'text', default: '3' },
+      // 'type': { 
+      //   label: '種類', type: 'radio', default: 'standard',
+      //   options: [
+      //     { label: '標準', value: 'standard' },
+      //     { label: 'ワイド', value: 'wide' },
+      //     { label: 'フル', value: 'full' }
+      //   ]
+      // },
+      // // 単一のON/OFFスイッチとして扱う場合（toggle）
+      // 'show': { 
+      //   label: '表示設定', type: 'toggle', default: 'show',
+      //   options: [
+      //     { label: '表示する', value: 'show' },
+      //     { label: '非表示', value: 'hide' }
+      //   ]
+      // },
+      // // もし将来「複数のバッジを表示する」など多項選択が必要なら checkbox を使う
+      // 'tags': {
+      //   label: 'タグ表示', type: 'checkbox', default: '',
+      //   options: [
+      //     { label: '新着', value: 'new' },
+      //     { label: '限定', value: 'limited' },
+      //     { label: 'SALE', value: 'sale' }
+      //   ]
+      // },
+    },
+      template: `
+      <$tag data-module="l-layout01" 
+            data-grid="$grid" 
+            data-type="$type" 
+            data-show="$show"
+            data-tags="$tags"
+            >
+        <div class="wrapper">
+          <div class="inner">
+            <div class="block contents" data-drop-zone="グリッド"></div>
+          </div>
+        </div>
+      </$tag>`.trim()
+  },
   'l-gridContents01': {
     label: 'グリッド', 
     tag: 'div',
