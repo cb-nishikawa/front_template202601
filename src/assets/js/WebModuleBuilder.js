@@ -3,41 +3,97 @@ import { WebModuleLogic } from './WebModuleLogic';
 import { WebModuleUI } from './WebModuleUI';
 
 export class WebModuleBuilder {
+
   constructor(options) {
     this.ctx = { ...options, LABELS: options.CONFIG.LABELS };
     this.logic = new WebModuleLogic(this.ctx);
     this.ui = new WebModuleUI(this);
 
-    // ✅ ページ対応マスター
+    // 既存：project（いったん残す）
     const pageId = "page-" + Math.random().toString(36).slice(2, 9);
-    this.project = {
-      version: 2,
-      activePageId: pageId,
-      pages: [
-        { id: pageId, title: "ページ1", tree: [] }
-      ]
+    this.state = {
+      project: {
+        version: 2,
+        activePageId: pageId,
+        pages: [{ id: pageId, title: "ページ1", tree: [] }]
+      },
+      ui: {
+        previewDragEnabled: false,
+        selectedModules: [],
+        selectedModuleCounts: {},
+        sheetAllowDuplicates: false
+      },
+      history: []
     };
 
-    // ✅ 既存互換（処理は今まで通り this.data を使わせる）
-    this.data = this._getActivePage().tree;
-
+    // 既存（いったん残す）
     this.previewDragEnabled = false;
     this.historyStack = [];
-    this.handleKeyDown = this.handleKeyDown.bind(this);
-
     this.selectedModules = [];
-    this.selectedModuleCounts = {};
-    this.sheetAllowDuplicates = false;
+
+    this.handleKeyDown = this.handleKeyDown.bind(this);
   }
 
-  _getActivePage() {
-    const p = this.project.pages.find(x => x.id === this.project.activePageId);
-    return p || this.project.pages[0];
+
+  get projectState() {
+    return this.state.project;
   }
 
-  _syncActiveDataRef() {
-    this.data = this._getActivePage().tree;
+  get project() {
+    return this.state.project;
   }
+
+  set project(next) {
+    this.state.project = next;
+  }
+
+  get uiState() {
+    return this.state.ui;
+  }
+
+  get tree() {
+    const page = this._getActivePage();
+    if (!Array.isArray(page.tree)) page.tree = [];
+    return page.tree;
+  }
+
+  set tree(next) {
+    this._getActivePage().tree = Array.isArray(next) ? next : [];
+  }
+
+  isPreviewDragEnabled() {
+    return !!this.uiState.previewDragEnabled;
+  }
+
+  get selectedModuleCounts() {
+    return this.uiState.selectedModuleCounts;
+  }
+
+  set selectedModuleCounts(next) {
+    this.uiState.selectedModuleCounts = next || {};
+  }
+
+  get sheetAllowDuplicates() {
+    return !!this.uiState.sheetAllowDuplicates;
+  }
+
+  set sheetAllowDuplicates(next) {
+    this.uiState.sheetAllowDuplicates = !!next;
+  }
+
+  get history() {
+    return this.state.history;
+  }
+
+  isPreviewDragEnabled() {
+    return !!this.uiState.previewDragEnabled;
+  }
+
+  pushHistory(snapshot) {
+    this.state.history.push(snapshot);
+  }
+
+
 
 
   /**
@@ -55,7 +111,6 @@ export class WebModuleBuilder {
     // 保存が無いときだけHTMLから初期ページを作る
     if (!hasSaved && previewRoot && previewRoot.children.length > 0) {
       this._getActivePage().tree = this.logic.buildModuleTree(previewRoot);
-      this._syncActiveDataRef();
     }
 
     this.syncView();
@@ -64,19 +119,25 @@ export class WebModuleBuilder {
   // ---------------------------------------------------------------
 
 
+  _getActivePage() {
+    const proj = this.project;
+    const p = proj.pages.find(x => x.id === proj.activePageId);
+    return p || proj.pages[0];
+  }
+
+
+
   /**
-   * JSONデータ（this.data）を元に、プレビューDOMとサイドバーを一斉更新し、保存を行う
+   * JSONデータを元に、プレビューDOMとサイドバーを一斉更新し、保存を行う
    * @param {Object[]|null} [treeData=null] - 外部から提供される新しいツリーデータ
    */
   syncView(treeData = null) {
-    this._syncActiveDataRef();
-
     const previewRoot = document.querySelector(this.ctx.CONFIG.SELECTORS.CONTAINER_INNER);
     if (!previewRoot) return;
 
     this._refreshInternalData(treeData, previewRoot);
     this._renderPreview(previewRoot);
-    this.renderSidebar(this.data);
+    this.renderSidebar(this.tree);
 
     this.saveToLocalStorage();
     this.initPreviewSortable();
@@ -86,7 +147,7 @@ export class WebModuleBuilder {
 
 
       /**
-       * 引数の有無や現在の状態に応じて、this.data を最新状態に同期する
+       * 引数の有無や現在の状態に応じて、JSONデータ を最新状態に同期する
        * @param {Object[]|null} treeData - 新しく提供されたツリーデータ
        * @param {HTMLElement} previewRoot - 現在のプレビューDOM
        * @private
@@ -95,7 +156,6 @@ export class WebModuleBuilder {
         // ✅ 外部から tree が渡された場合だけ更新
         if (treeData) {
           this._getActivePage().tree = JSON.parse(JSON.stringify(treeData));
-          this._syncActiveDataRef();
           return;
         }
 
@@ -106,13 +166,14 @@ export class WebModuleBuilder {
 
 
       /**
-       * this.data に基づき、プレビューエリアのDOMをゼロから構築する
+       * JSONデータ に基づき、プレビューエリアのDOMをゼロから構築する
        * @param {HTMLElement} previewRoot - 描画先のコンテナ
        * @private
        */
       _renderPreview(previewRoot) {
         previewRoot.innerHTML = "";
-        this.data.forEach(node => {
+
+        this.tree.forEach(node => {
           const el = this.renderNode(node);
           if (el) {
             previewRoot.appendChild(el);
@@ -360,8 +421,6 @@ export class WebModuleBuilder {
     this.project.pages.push({ id, title: t, tree: [] });
     this.project.activePageId = id;
 
-    this._syncActiveDataRef();
-
     // UI更新（selectの中身を更新したいので）
     this.renderToolbar();
     this.syncView();
@@ -394,9 +453,6 @@ export class WebModuleBuilder {
       this.project.activePageId = next.id;
     }
 
-    // 参照を同期
-    this._syncActiveDataRef();
-
     // UI更新
     this.renderToolbar();
     this.syncView();
@@ -412,7 +468,6 @@ export class WebModuleBuilder {
     if (!this.project.pages.some(p => p.id === pageId)) return;
 
     this.project.activePageId = pageId;
-    this._syncActiveDataRef();
 
     // UI更新（select表示更新）
     this.renderToolbar();
@@ -554,18 +609,19 @@ export class WebModuleBuilder {
       _integrateNodeToTree(newNode, parentNodeData) {
         if (!parentNodeData) {
           // 親の指定がない場合はルート（最上位）に追加
-          this.data.push(newNode);
-        } else {
-          // IDを元に、現在のデータツリー内から最新の親ノード参照を探す
-          const actualParent = this.logic.findNodeById(this.data, parentNodeData.id);
-          if (actualParent) {
-            // 親が children を持っているか確認し、配列にプッシュ
-            if (!Array.isArray(actualParent.children)) {
-              actualParent.children = [];
-            }
-            actualParent.children.push(newNode);
-          }
+          this.tree.push(newNode);
+          return;
         }
+
+        // IDを元に、現在のツリーデータ内から最新の親ノード参照を探す
+        const actualParent = this.logic.findNodeById(this.tree, parentNodeData.id);
+        if (!actualParent) return;
+
+        // 親が children を持っているか確認し、配列にプッシュ
+        if (!Array.isArray(actualParent.children)) {
+          actualParent.children = [];
+        }
+        actualParent.children.push(newNode);
       }
       // ---------------------------------------------------------------
 
@@ -583,7 +639,7 @@ export class WebModuleBuilder {
     if (!this._confirmDeletion()) return;
 
     // 2. データツリーからの実削除（データの責務）
-    const isDeleted = this._performDeleteFromTree(this.data, id);
+    const isDeleted = this._performDeleteFromTree(this.tree, id);
 
     // 3. 削除成功時のみ画面を同期
     if (isDeleted) {
@@ -642,7 +698,7 @@ export class WebModuleBuilder {
    */
   fastAddFrame(node) {
     // 1. 最新の親ノード参照をツリーから取得
-    const parentNode = this.logic.findNodeById(this.data, node.id);
+    const parentNode = this.logic.findNodeById(this.tree, node.id);
     if (!parentNode) return;
 
     // 2. 親の定義に基づき、新しい枠（structure-box）データを生成
@@ -719,7 +775,7 @@ export class WebModuleBuilder {
    * プレビューDOM側の Sortable を有効にする
    */
   initPreviewSortable() {
-    if (!this.previewDragEnabled) return;
+    if (!this.isPreviewDragEnabled()) return;
 
     const previewRoot = document.querySelector(this.ctx.CONFIG.SELECTORS.CONTAINER_INNER);
     if (!previewRoot) return;
@@ -771,9 +827,10 @@ export class WebModuleBuilder {
         const parentLi = to.el.closest('.tree-item');
         if (parentLi) {
           const id = parentLi.getAttribute('data-id');
-          const node = this.logic.findNodeById(this.data, id);
-          return node && node.type === 'structure-box';
+          const node = this.logic.findNodeById(this.tree, id);
+          return !!(node && node.type === 'structure-box');
         }
+
         return false;
       }
       // ---------------------------------------------------------------
@@ -810,7 +867,7 @@ export class WebModuleBuilder {
         const fromId = getParentId(from);
 
         // データの移動と同期
-        this.moveDataNode(targetId, fromId, toId, newIndex);
+        this.moveTreeNode(targetId, fromId, toId, newIndex);
         this.syncView();
       }
       // ---------------------------------------------------------------
@@ -849,10 +906,10 @@ export class WebModuleBuilder {
    * @param {Object} node - 編集対象のノードデータ
    */
   openEditPanel(node) {
-    const masterNode = this.logic.findNodeById(this.data, node.id);
+    const masterNode = this.logic.findNodeById(this.tree, node.id);
     const container = document.querySelector(this.ctx.CONFIG.SELECTORS.STYLE_PANEL_INNER);
     const styleBlock = document.querySelector(this.ctx.CONFIG.SELECTORS.STYLE_BLOCK);
-    
+
     if (!masterNode || !container || !styleBlock) return;
 
     // 1. パネルの初期化とベースUIの生成
@@ -876,7 +933,6 @@ export class WebModuleBuilder {
       closeBtn.onclick = () => {
         styleBlock.classList.add('is-hidden');
         styleBlock.classList.remove('is-active');
-        // 外側クリックのイベント登録は行わない
       };
     }
   }
@@ -1323,7 +1379,7 @@ export class WebModuleBuilder {
        * @private
        */
       _updatePropValue(propItem, item, targetId, selector, storageKey) {
-        const masterNode = this.logic.findNodeById(this.data, targetId);
+        const masterNode = this.logic.findNodeById(this.tree, targetId)
         const targetRoot = document.querySelector(`[${this.ctx.CONFIG.ATTRIBUTES.TREE_ID}="${targetId}"]`);
         
         // getValue は WebModuleUI が生成した要素に生やしているメソッド
@@ -1395,7 +1451,7 @@ export class WebModuleBuilder {
         propItem.querySelector('.del-p').onclick = () => {
           const targetRoot = document.querySelector(`[${this.ctx.CONFIG.ATTRIBUTES.TREE_ID}="${targetId}"]`);
           const el = selector === "" ? targetRoot : targetRoot?.querySelector(selector);
-          const masterNode = this.logic.findNodeById(this.data, targetId);
+          const masterNode = this.logic.findNodeById(this.tree, targetId)
 
           if (el) {
             if (item.prop === 'custom-css') {
@@ -1498,25 +1554,19 @@ export class WebModuleBuilder {
 
 
 
-  /**
-   * データツリー内のノードを別の場所（親ノードやインデックス）へ移動させる
-   * @param {string} targetId - 移動させるノードのID
-   * @param {string|null} fromId - 移動前の親ノードID（ルートならnull）
-   * @param {string|null} toId - 移動後の親ノードID（ルートならnull）
-   * @param {number} newIndex - 移動先での挿入インデックス
-   */
-  moveDataNode(targetId, fromId, toId, newIndex) {
+  moveTreeNode(targetId, fromId, toId, newIndex) {
     // 1. 移動対象をツリーから探し出し、一旦取り出す
-    const movedNode = this._extractNodeById(this.data, targetId);
-    
+    const movedNode = this._extractNodeById(this.tree, targetId);
+
     if (!movedNode) {
       console.warn(`Node not found: ${targetId}`);
       return;
     }
 
     // 2. 指定された移動先の親ノード（またはルート）に挿入する
-    this._insertNodeAt(this.data, toId, newIndex, movedNode);
+    this._insertNodeAt(this.tree, toId, newIndex, movedNode);
   }
+
   // ---------------------------------------------------------------
 
 
@@ -1632,17 +1682,17 @@ export class WebModuleBuilder {
       _attachNodeToTarget(newNode, parentId) {
         if (!parentId) {
           // 親IDがない場合はルート配列に追加
-          if (!Array.isArray(this.data)) this.data = [];
-          this.data.push(newNode);
+          this.tree.push(newNode);
+          return;
+        }
+
+        // 親IDがある場合はツリー内を検索して追加
+        const parentNode = this.logic.findNodeById(this.tree, parentId);
+        if (parentNode) {
+          if (!Array.isArray(parentNode.children)) parentNode.children = [];
+          parentNode.children.push(newNode);
         } else {
-          // 親IDがある場合はツリー内を検索して追加
-          const parentNode = this.logic.findNodeById(this.data, parentId);
-          if (parentNode) {
-            if (!Array.isArray(parentNode.children)) parentNode.children = [];
-            parentNode.children.push(newNode);
-          } else {
-            console.warn(`Target parent node not found: ${parentId}`);
-          }
+          console.warn(`Target parent node not found: ${parentId}`);
         }
       }
       // ---------------------------------------------------------------
@@ -1658,7 +1708,7 @@ export class WebModuleBuilder {
    * @param {string} label - 表示ラベル（"グリッド" または "リスト"）
    */
   addStructure(parentId, label) {
-    const parentNode = this.logic.findNodeById(this.data, parentId);
+    const parentNode = this.logic.findNodeById(this.tree, parentId);
     if (!parentNode) return;
 
     // 1. 新しい枠を作成
@@ -1670,17 +1720,15 @@ export class WebModuleBuilder {
       isStructure: true
     };
 
-    // 2. 【修正】初期モジュールを強制的に入れる
-    // 本来は定義から取得すべきですが、現状の ELEMENT_DEFS に合わせ、
-    // 確実に存在する 'm-text01' を初期モジュールとして生成して挿入します。
-    const defaultModuleId = 'm-text01'; 
+    // 2. 初期モジュールを入れる（現状の確実な定義）
+    const defaultModuleId = 'm-text01';
     const childModule = this.createInitialData(defaultModuleId);
     if (childModule) {
       newStructure.children.push(childModule);
     }
 
     // 3. 親の children 配列に追加
-    if (!parentNode.children) parentNode.children = [];
+    if (!Array.isArray(parentNode.children)) parentNode.children = [];
     parentNode.children.push(newStructure);
 
     // 4. 再描画
@@ -1751,9 +1799,9 @@ export class WebModuleBuilder {
   exportCSS() {
     let cssContent = "/* Generated by WebModuleBuilder */\n\n";
 
-    // 1. ツリーを走査してCSS文字列を構築
-    cssContent += this._buildFullCssString(this.data);
-    
+    // 1. ツリーを走査してCSS文字列を構築（✅ this.tree）
+    cssContent += this._buildFullCssString(this.tree);
+
     // 2. ファイル名の生成
     const fileName = this._generateExportFileName('css');
 
@@ -1951,18 +1999,18 @@ export class WebModuleBuilder {
     const targetParentId = this.pendingAddParentId;
 
     Object.entries(this.selectedModuleCounts).forEach(([type, qty]) => {
-      for (let i = 0; i < qty; i++) { // qtyは実質1
+      for (let i = 0; i < qty; i++) {
         const newNode = this.createInitialData(type);
         if (!newNode) continue;
 
         if (targetParentId) {
-          const parentNode = this.logic.findNodeById(this.data, targetParentId);
+          const parentNode = this.logic.findNodeById(this.tree, targetParentId);
           if (parentNode) {
             if (!Array.isArray(parentNode.children)) parentNode.children = [];
             parentNode.children.push(newNode);
           }
         } else {
-          this.data.push(newNode);
+          this.tree.push(newNode); // ✅ ここ
         }
       }
     });
@@ -2037,7 +2085,6 @@ export class WebModuleBuilder {
             this.project.activePageId = this.project.pages[0].id;
           }
 
-          this._syncActiveDataRef();
           this.renderToolbar();
           this.syncView();
           alert('プロジェクトを復元しました。');
@@ -2050,7 +2097,6 @@ export class WebModuleBuilder {
           if (!confirm('現在のページを上書きします。よろしいですか？')) return;
 
           this._getActivePage().tree = importedData;
-          this._syncActiveDataRef();
           this.syncView();
           alert('ページを復元しました。');
           return;
@@ -2088,9 +2134,14 @@ export class WebModuleBuilder {
    * データをブラウザの localStorage に保存する
    */
   saveToLocalStorage() {
-    const dataString = JSON.stringify(this.project);
-    localStorage.setItem('web_module_builder_data', dataString);
-    console.log('データをローカルに保存しました');
+    try {
+      localStorage.setItem(
+        "web_module_builder_data",
+        JSON.stringify(this.project)
+      );
+    } catch (e) {
+      console.error("saveToLocalStorage failed:", e);
+    }
   }
   // ---------------------------------------------------------------
 
@@ -2101,26 +2152,32 @@ export class WebModuleBuilder {
    * localStorage からデータを復元する
    */
   loadFromLocalStorage() {
-    const savedData = localStorage.getItem('web_module_builder_data');
-    if (!savedData) return false;
+    const raw = localStorage.getItem("web_module_builder_data");
+    if (!raw) return false;
 
     try {
-      const parsed = JSON.parse(savedData);
+      const parsed = JSON.parse(raw);
 
-      // ✅ v2前提：pagesが無いなら失敗扱い（旧は考えない）
+      // project(v2) 前提（旧は考えない）
       if (!parsed || !Array.isArray(parsed.pages) || parsed.pages.length === 0) return false;
 
-      this.project = parsed;
+      // ✅ state に入れる
+      this.state.project = parsed;
 
-      // activeが壊れてたら先頭に寄せる
-      if (!this.project.pages.some(p => p.id === this.project.activePageId)) {
-        this.project.activePageId = this.project.pages[0].id;
+      // activePageId が壊れてたら先頭に寄せる
+      if (!this.state.project.pages.some(p => p.id === this.state.project.activePageId)) {
+        this.state.project.activePageId = this.state.project.pages[0].id;
       }
 
-      this._syncActiveDataRef();
+      // まだ this.project を残してるなら参照を合わせる（並走期間の事故防止）
+      this.project = this.state.project;
+
+      // tree参照を同期（あなたの実装に合わせて呼ぶ）
+      if (typeof this._syncActiveTreeRef === "function") this._syncActiveTreeRef();
+
       return true;
     } catch (e) {
-      console.error("データの復元に失敗しました", e);
+      console.error("loadFromLocalStorage failed:", e);
       return false;
     }
   }
@@ -2146,18 +2203,21 @@ export class WebModuleBuilder {
    * プレビューのドラッグ有効・無効を切り替える
    */
   togglePreviewDrag(enabled) {
-    this.previewDragEnabled = enabled;
-    
-    // プレビュー全体にクラスを付与/削除（CSSでの表示切り替え用）
-    const container = document.querySelector(this.ctx.CONFIG.SELECTORS.CONTAINER_INNER);
-    if (container) {
-      container.classList.toggle('drag-enabled', enabled);
-    }
+    // ✅ stateを正にする
+    this.uiState.previewDragEnabled = enabled;
 
-    // Sortableの有効化・無効化を制御
-    this.syncView(); 
+    // 既存互換（まだ消さない）
+    this.previewDragEnabled = enabled;
+
+    const container = document.querySelector(this.ctx.CONFIG.SELECTORS.CONTAINER_INNER);
+    if (container) container.classList.toggle('drag-enabled', enabled);
+
+    this.syncView();
   }
   // ---------------------------------------------------------------
+
+
+  
 
 }
 

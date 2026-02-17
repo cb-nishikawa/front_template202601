@@ -287,7 +287,7 @@ export class WebModuleUI {
 
         <div class="toolbar-group">
           <label class="toggle-switch-inline">
-            <input type="checkbox" id="preview-drag-toggle">
+            <input type="checkbox" id="preview-drag-toggle" ${builder.uiState.previewDragEnabled ? "checked" : ""}>
             <span class="toggle-slider"></span>
             <span class="toggle-label">プレビュー操作</span>
           </label>
