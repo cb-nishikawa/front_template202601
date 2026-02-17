@@ -28,7 +28,7 @@ export const ELEMENT_DEFS = {
   'l-layout01': {
     label: 'レイアウト', 
     tag: 'div',
-    default: 'm-text01', 
+    default: '', 
     schema: {
       // 'grid': { label: '列数', type: 'text', default: '3' },
       // 'type': { 

@@ -793,97 +793,10 @@ export class WebModuleBuilder {
    * @returns {Object|null} 生成された初期ノードデータ、または定義がない場合は null
    */
   createInitialData(defId) {
-    const def = this.ctx.ELEMENT_DEFS[defId];
-    if (!def) return null;
-
-    // 1. 動的な初期ラベルの決定
-    const initialLabel = this._extractInitialLabel(def);
-
-    // 2. ベースとなるノードの構築
-    const newNode = {
-      id: this._generateUniqueId(),
-      type: defId,
-      label: initialLabel,
-      children: [],
-      isStructure: def.template.includes(this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE)
-    };
-
-    // 3. コンテナ（DROP_ZONE）を持つ場合の構造体生成
-    this._attachInitialStructure(newNode, def);
-
-    return newNode;
+    return this._nfCreateModule(defId);
   }
   // ---------------------------------------------------------------
 
-
-      /**
-       * テンプレートから最適な初期ラベルを抽出する
-       * @param {Object} def - モジュール定義
-       * @returns {string} 抽出されたラベル文字列
-       * @private
-       */
-      _extractInitialLabel(def) {
-        const temp = document.createElement('div');
-        temp.innerHTML = def.template;
-        const treeViewEl = temp.querySelector('[data-tree-view]');
-        
-        if (treeViewEl) {
-          const editConf = treeViewEl.getAttribute('data-edit');
-          // data-edit="html:propName:初期テキスト" の形式からテキスト部分を抽出
-          if (editConf && editConf.includes('html:')) {
-            const configPart = editConf.split(';').find(c => c.trim().startsWith('html:'));
-            if (configPart) {
-              const parts = configPart.split(':');
-              // parts[2] 以降が初期テキスト
-              return parts.slice(2).join(':') || def.label;
-            }
-          }
-        }
-        return def.label;
-      }
-      // ---------------------------------------------------------------
-
-
-
-      /**
-       * モジュールがコンテナ（DropZone）を持つ場合、内部に structure-box を自動生成する
-       * @param {Object} newNode - 生成中のノードデータ
-       * @param {Object} def - モジュール定義
-       * @private
-       */
-      _attachInitialStructure(newNode, def) {
-        const temp = document.createElement('div');
-        temp.innerHTML = def.template;
-        const dzEl = temp.querySelector(`[${this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE}]`);
-        
-        if (dzEl) {
-          const dzNode = {
-            id: this._generateUniqueId(),
-            type: 'structure-box',
-            label: dzEl.getAttribute(this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE) || "枠",
-            isStructure: true,
-            // 必要に応じて初期状態で中に配置するモジュールを設定
-            children: [this.createInitialData('m-text01')] 
-          };
-          newNode.children.push(dzNode);
-        }
-      }
-      // ---------------------------------------------------------------
-
-
-
-      /**
-       * ランダムなユニークIDを生成する
-       * @returns {string} id-xxxxxx 形式の文字列
-       * @private
-       */
-      _generateUniqueId() {
-        return "id-" + Math.random().toString(36).slice(2, 11);
-      }
-      // ---------------------------------------------------------------
-
-
-  // ---------------------------------------------------------------
 
 
 
@@ -961,7 +874,7 @@ export class WebModuleBuilder {
     const parentNode = this.logic.findNodeById(this.tree, node.id);
     if (!parentNode) return;
 
-    const newFrameNode = this._createNewFrameData(parentNode);
+    const newFrameNode = this._nfCreateStructureBox(parentNode);
 
     if (!Array.isArray(parentNode.children)) parentNode.children = [];
     parentNode.children.push(newFrameNode);
@@ -969,39 +882,6 @@ export class WebModuleBuilder {
     this.syncView();
   }
 
-      /**
-       * 親ノードの定義からドロップゾーンの情報を抽出し、新しい枠の初期データを生成する
-       * @param {Object} parentNode - 親ノードデータ
-       * @returns {Object} 生成された structure-box ノード
-       * @private
-       */
-      _createNewFrameData(parentNode) {
-        const def = this.ctx.ELEMENT_DEFS[parentNode.type];
-        
-        // テンプレートからドロップゾーン（DZ）の設定を解析
-        const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = def?.template || "";
-        const dzEl = tempDiv.querySelector(`[${this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE}]`);
-
-        const newFrame = {
-          id: this._generateUniqueId(),
-          type: 'structure-box',
-          label: dzEl ? dzEl.getAttribute(this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE) : "枠",
-          isStructure: true,
-          children: []
-        };
-
-        // 親の定義に default モジュールが指定されていれば、初期要素として中に入れる
-        if (def && def.default) {
-          const childModule = this.createInitialData(def.default);
-          if (childModule) {
-            newFrame.children.push(childModule);
-          }
-        }
-
-        return newFrame;
-      }
-      // ---------------------------------------------------------------
 
 
 
@@ -1853,6 +1733,171 @@ export class WebModuleBuilder {
 
 
 
+  /* ================================================================================================
+    Node Factory Layer
+  ================================================================================================ */
+
+  /**
+   * NodeFactory層: 指定defIdの初期ノードを生成する
+   * @param {string} defId
+   * @returns {Object|null}
+   * @private
+   */
+  _nfCreateModule(defId) {
+    const def = this.ctx.ELEMENT_DEFS[defId];
+    if (!def) return null;
+
+    // 1. 動的な初期ラベルの決定
+    const initialLabel = this._nfExtractInitialLabel(def);
+
+    // 2. ベースとなるノードの構築
+    const newNode = {
+      id: this._nfGenerateUniqueId(),
+      type: defId,
+      label: initialLabel,
+      children: [],
+      isStructure: def.template.includes(this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE)
+    };
+
+    // 3. コンテナ（DROP_ZONE）を持つ場合の構造体生成
+    this._nfAttachInitialStructure(newNode, def);
+
+    return newNode;
+  }
+
+
+
+  /**
+   * NodeFactory層: 親ノードから structure-box を生成する
+   * @param {Object} parentNode
+   * @returns {Object}
+   * @private
+   */
+  _nfCreateStructureBox(parentNode) {
+    const def = this.ctx.ELEMENT_DEFS[parentNode.type];
+
+    const newFrame = {
+      id: this._nfGenerateUniqueId(),
+      type: 'structure-box',
+      label: this._nfGetDropZoneLabelFromDef(def),
+      isStructure: true,
+      children: []
+    };
+
+    const childDefId = this._nfResolveDefaultChildDefId(def);
+    const child = this.createInitialData(childDefId);
+    if (child) newFrame.children.push(child);
+
+    return newFrame;
+  }
+
+
+  /**
+   * NodeFactory層: テンプレートから最適な初期ラベルを抽出する
+   * @param {Object} def - モジュール定義
+   * @returns {string}
+   * @private
+   */
+  _nfExtractInitialLabel(def) {
+    const temp = document.createElement('div');
+    temp.innerHTML = def.template;
+    const treeViewEl = temp.querySelector('[data-tree-view]');
+
+    if (treeViewEl) {
+      const editConf = treeViewEl.getAttribute('data-edit');
+      if (editConf && editConf.includes('html:')) {
+        const configPart = editConf.split(';').find(c => c.trim().startsWith('html:'));
+        if (configPart) {
+          const parts = configPart.split(':');
+          return parts.slice(2).join(':') || def.label;
+        }
+      }
+    }
+    return def.label;
+  }
+
+
+  /**
+   * NodeFactory層: 衝突しにくいユニークIDを生成する
+   * - crypto.randomUUID が使える環境ではそれを優先
+   * - 使えない場合は Date.now()+counter にフォールバック
+   * @returns {string}
+   * @private
+   */
+  _nfGenerateUniqueId() {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return `id-${crypto.randomUUID()}`;
+    }
+    this._idCounter = (this._idCounter || 0) + 1;
+    return `id-${Date.now()}-${this._idCounter}`;
+  }
+
+  /**
+   * DropZoneの初期子モジュールIDを解決する
+   * - def.default があればそれを採用
+   * - なければ m-text01 にフォールバック
+   * @param {Object|null|undefined} def
+   * @returns {string}
+   * @private
+   */
+  _nfResolveDefaultChildDefId(def) {
+    return def?.default || 'm-text01';
+  }
+
+  /**
+   * 親ノード定義から、枠（structure-box）のラベルを取得する
+   * @param {Object|null|undefined} def
+   * @returns {string}
+   * @private
+   */
+  _nfGetDropZoneLabelFromDef(def) {
+    const dzEl = this._nfGetDropZoneElementFromTemplate(def?.template || "");
+    if (!dzEl) return "枠";
+    return dzEl.getAttribute(this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE) || "枠";
+  }
+
+  /**
+   * テンプレHTMLから DropZone 要素を取得する
+   * @param {string} template
+   * @returns {Element|null}
+   * @private
+   */
+  _nfGetDropZoneElementFromTemplate(template) {
+    if (!template) return null;
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = template;
+    return tempDiv.querySelector(`[${this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE}]`);
+  }
+
+
+  /**
+   * NodeFactory層: DropZoneを持つモジュールに初期structure-boxを付与する
+   * @param {Object} newNode
+   * @param {Object} def
+   * @private
+   */
+  _nfAttachInitialStructure(newNode, def) {
+    const dzEl = this._nfGetDropZoneElementFromTemplate(def?.template || "");
+        
+    if (dzEl) {
+      const dzNode = {
+        id: this._nfGenerateUniqueId(),
+        type: 'structure-box',
+        label: dzEl.getAttribute(this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE) || "枠",
+        isStructure: true,
+        // 必要に応じて初期状態で中に配置するモジュールを設定
+        children: []
+      };
+      const childDefId = this._nfResolveDefaultChildDefId(def);
+      const child = this.createInitialData(childDefId);
+      if (child) dzNode.children.push(child);
+
+        newNode.children.push(dzNode);
+    }
+  }
+
+
+  /* ================================================================================================
 
 
 
