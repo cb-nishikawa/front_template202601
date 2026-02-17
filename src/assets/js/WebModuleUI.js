@@ -102,7 +102,7 @@ export class WebModuleUI {
       </div>`;
     const btnWrap = this.parseHtml(html);
     btnWrap.querySelector('button').onclick = () => {
-      this.builder.fastAddFrame(node); // Builderのデータ操作版を呼ぶ
+      this.builder.addStructure(node); // Builderのデータ操作版を呼ぶ
     };
     return btnWrap;
   }
@@ -306,7 +306,12 @@ export class WebModuleUI {
     // 既存ボタン
     toolbarEl.querySelector('#export-btn').onclick = () => builder.exportJSON();
     toolbarEl.querySelector('#import-btn').onclick = () => builder.importJSON();
-    toolbarEl.querySelector('#clear-btn').onclick = () => builder.clearLocalStorage();
+    toolbarEl.querySelector('#clear-btn').onclick = () => {
+      if (confirm("保存されているデータをすべて削除して初期化しますか？")) {
+        builder.clearLocalStorage();
+        location.reload();
+      }
+    };
 
     // ページ切替
     const pageSel = toolbarEl.querySelector('#page-select');
