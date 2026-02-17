@@ -131,7 +131,7 @@ export class WebModuleBuilder {
     this.pushHistory(JSON.parse(JSON.stringify(this.tree)));
 
     this._renderPreview(previewRoot);
-    this.renderSidebar(this.tree);
+    this._renderSidebar(this.tree);
 
     this.saveToLocalStorage();
     this.initPreviewSortable();
@@ -174,6 +174,134 @@ export class WebModuleBuilder {
           }
         });
       }
+      // ---------------------------------------------------------------
+
+
+      /**
+       * サイドバーのツリー構造を生成・描画し、各種ボタンやSortableを初期化する
+       * @param {Object[]} tree - 表示対象のツリーデータ
+       */
+      _renderSidebar(tree) {
+        const displayInner = document.querySelector(this.ctx.CONFIG.SELECTORS.TREE_DISPLAY_INNER);
+        if (!displayInner) return;
+
+        // 1. 基本構造の描画
+        displayInner.innerHTML = "";
+        
+        displayInner.appendChild(this.ui.createAddControls(this, null));
+
+        const treeHtml = `<ul class="sortable-list root-sortable-list">${this._buildTreeHtml(tree)}</ul>`;
+        displayInner.insertAdjacentHTML("beforeend", treeHtml);
+
+        // 2. 各ノードへの動的部品（ボタン等）のマウント
+        this._mountTreeControls(displayInner, tree);
+
+        // 3. インタラクション（並び替え・ホバー）の初期化
+        displayInner.querySelectorAll("ul.sortable-list").forEach(ul => this.initSortable(ul));
+        this.bindHoverEvents(displayInner);
+      }
+      // ---------------------------------------------------------------
+
+
+          /**
+           * ツリーデータから再帰的にHTML文字列を生成する
+           * @private
+           */
+          _buildTreeHtml(nodes) {
+            return nodes.map(node => {
+              const id = this.ui.escapeHtml(node.id);
+              const isStrBox = node.type === 'structure-box';
+              const def = this.ctx.ELEMENT_DEFS[node.type];
+              
+              return `
+                <li data-id="${id}" class="tree-item">
+                  <div class="parent${isStrBox ? " no-drag structure-row" : ""}" data-row-id="${id}">
+                    ${!isStrBox ? `<span class="drag-handle">≡</span>` : ""}
+                    <span class="label-text">${isStrBox ? `[${this.ui.escapeHtml(node.label)}]` : this.ui.escapeHtml(node.label)}</span>
+                    <div class="row-controls">
+                      <div class="manage-controls" data-manage-for="${id}">
+                        <div class="add-controls" data-add-for="${id}"></div>
+                      </div>
+                    </div>
+                  </div>
+                  <ul class="sortable-list">
+                    ${node.children ? this._buildTreeHtml(node.children) : ""}
+                  </ul>
+                  ${/* 特殊コンテナへの枠追加用スロット */
+                    (!isStrBox && def?.template.includes(this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE)) 
+                    ? `<div data-blockadd-for="${id}"></div>` : ""
+                  }
+                </li>`.trim();
+            }).join("");
+          }
+          // ---------------------------------------------------------------
+
+
+          /**
+           * 生成されたHTML要素に対して、JSで生成したボタン類を流し込む
+           * @private
+           */
+          _mountTreeControls(container, tree) {
+            // 編集・削除・追加ボタンのマウント
+            container.querySelectorAll('.tree-item').forEach(li => {
+              const id = li.getAttribute('data-id');
+              const node = this.logic.findNodeById(tree, id);
+              if (!node) return;
+
+              const mSlot = li.querySelector(`[data-manage-for="${id}"]`);
+              if (mSlot) {
+                if (node.type !== 'structure-box') mSlot.prepend(this.ui.createEditButton(node));
+                mSlot.appendChild(this.ui.createDeleteButton(node));
+              }
+
+              const addSlot = li.querySelector(`[data-add-for="${id}"]`);
+              if (!addSlot) return;
+
+              // ✅ data-drop-zoneに当たる「箱（structure-box）」にだけ📦を出す
+              if (node.type === 'structure-box') {
+                addSlot.appendChild(this.ui.createAddControls(this, node.id));
+              } else {
+                addSlot.innerHTML = ""; // 親（グリッドセット等）では何も出さない
+              }
+            });
+
+            // 「+ 枠を追加」ボタンの特殊処理
+            container.querySelectorAll("[data-blockadd-for]").forEach(slot => {
+              this._setupBlockAddButton(slot, tree);
+            });
+          }
+          // ---------------------------------------------------------------
+
+
+          /**
+           * 構造体（グリッド等）専用の「枠を追加」ボタンをセットアップする
+           * @private
+           */
+          _setupBlockAddButton(slot, tree) {
+            const id = slot.getAttribute("data-blockadd-for");
+            const node = this.logic.findNodeById(tree, id);
+            if (!node) return;
+
+            const def = this.ctx.ELEMENT_DEFS[node.type];
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = def.template;
+            const dz = tempDiv.querySelector(`[${this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE}]`);
+            const label = dz ? dz.getAttribute(this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE) : "枠";
+
+            const btnWrapper = this.ui.parseHtml(`
+              <div class="tree-block-add-wrap">
+                <button type="button" class="blockAddBtn">+ ${label}を追加</button>
+              </div>
+            `);
+
+            btnWrapper.querySelector('button').onclick = (e) => {
+              e.stopPropagation();
+              this.fastAddFrame(node); // さきほど整理した fastAddFrame を呼び出し
+            };
+            slot.replaceWith(btnWrapper);
+          }
+          // ---------------------------------------------------------------
+
       // ---------------------------------------------------------------
 
 
@@ -455,9 +583,6 @@ export class WebModuleBuilder {
   // ---------------------------------------------------------------
 
 
-
-
-
   setActivePage(pageId) {
     if (!this.project.pages.some(p => p.id === pageId)) return;
 
@@ -573,54 +698,6 @@ export class WebModuleBuilder {
 
   // ---------------------------------------------------------------
 
-
-
-  /**
-   * 指定したノードまたはルートに新しいモジュールを追加する
-   * @param {Object|null} parentNodeData - 追加先の親ノードデータ。ルートに追加する場合は null
-   * @param {string} defId - 追加するモジュールの定義ID (例: 'm-btn01')
-   */
-  addNewModule(parentNodeData, defId) {
-    // 1. 追加するノードの初期データを生成
-    const newNode = this.createInitialData(defId);
-    if (!newNode) return;
-
-    // 2. 既存のデータツリーへ新しいノードを統合
-    this._integrateNodeToTree(newNode, parentNodeData);
-
-    // 3. 視覚的・データの同期
-    this.syncView();
-  }
-  // ---------------------------------------------------------------
-
-
-      /**
-       * 新しいノードをデータツリーの適切な位置（ルートまたは親の直下）に挿入する
-       * @param {Object} newNode - 挿入する新しいノード
-       * @param {Object|null} parentNodeData - 親となるノードデータ
-       * @private
-       */
-      _integrateNodeToTree(newNode, parentNodeData) {
-        if (!parentNodeData) {
-          // 親の指定がない場合はルート（最上位）に追加
-          this.tree.push(newNode);
-          return;
-        }
-
-        // IDを元に、現在のツリーデータ内から最新の親ノード参照を探す
-        const actualParent = this.logic.findNodeById(this.tree, parentNodeData.id);
-        if (!actualParent) return;
-
-        // 親が children を持っているか確認し、配列にプッシュ
-        if (!Array.isArray(actualParent.children)) {
-          actualParent.children = [];
-        }
-        actualParent.children.push(newNode);
-      }
-      // ---------------------------------------------------------------
-
-
-  // ---------------------------------------------------------------
 
 
 
@@ -1200,132 +1277,7 @@ export class WebModuleBuilder {
 
 
 
-  /**
-   * サイドバーのツリー構造を生成・描画し、各種ボタンやSortableを初期化する
-   * @param {Object[]} tree - 表示対象のツリーデータ
-   */
-  renderSidebar(tree) {
-    const displayInner = document.querySelector(this.ctx.CONFIG.SELECTORS.TREE_DISPLAY_INNER);
-    if (!displayInner) return;
-
-    // 1. 基本構造の描画
-    displayInner.innerHTML = "";
-    
-    displayInner.appendChild(this.ui.createAddControls(this, null));
-
-    const treeHtml = `<ul class="sortable-list root-sortable-list">${this._buildTreeHtml(tree)}</ul>`;
-    displayInner.insertAdjacentHTML("beforeend", treeHtml);
-
-    // 2. 各ノードへの動的部品（ボタン等）のマウント
-    this._mountTreeControls(displayInner, tree);
-
-    // 3. インタラクション（並び替え・ホバー）の初期化
-    displayInner.querySelectorAll("ul.sortable-list").forEach(ul => this.initSortable(ul));
-    this.bindHoverEvents(displayInner);
-  }
-  // ---------------------------------------------------------------
-
-
-      /**
-       * ツリーデータから再帰的にHTML文字列を生成する
-       * @private
-       */
-      _buildTreeHtml(nodes) {
-        return nodes.map(node => {
-          const id = this.ui.escapeHtml(node.id);
-          const isStrBox = node.type === 'structure-box';
-          const def = this.ctx.ELEMENT_DEFS[node.type];
-          
-          return `
-            <li data-id="${id}" class="tree-item">
-              <div class="parent${isStrBox ? " no-drag structure-row" : ""}" data-row-id="${id}">
-                ${!isStrBox ? `<span class="drag-handle">≡</span>` : ""}
-                <span class="label-text">${isStrBox ? `[${this.ui.escapeHtml(node.label)}]` : this.ui.escapeHtml(node.label)}</span>
-                <div class="row-controls">
-                  <div class="manage-controls" data-manage-for="${id}">
-                    <div class="add-controls" data-add-for="${id}"></div>
-                  </div>
-                </div>
-              </div>
-              <ul class="sortable-list">
-                ${node.children ? this._buildTreeHtml(node.children) : ""}
-              </ul>
-              ${/* 特殊コンテナへの枠追加用スロット */
-                (!isStrBox && def?.template.includes(this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE)) 
-                ? `<div data-blockadd-for="${id}"></div>` : ""
-              }
-            </li>`.trim();
-        }).join("");
-      }
-      // ---------------------------------------------------------------
-
-
-      /**
-       * 生成されたHTML要素に対して、JSで生成したボタン類を流し込む
-       * @private
-       */
-      _mountTreeControls(container, tree) {
-        // 編集・削除・追加ボタンのマウント
-        container.querySelectorAll('.tree-item').forEach(li => {
-          const id = li.getAttribute('data-id');
-          const node = this.logic.findNodeById(tree, id);
-          if (!node) return;
-
-          const mSlot = li.querySelector(`[data-manage-for="${id}"]`);
-          if (mSlot) {
-            if (node.type !== 'structure-box') mSlot.prepend(this.ui.createEditButton(node));
-            mSlot.appendChild(this.ui.createDeleteButton(node));
-          }
-
-          const addSlot = li.querySelector(`[data-add-for="${id}"]`);
-          if (!addSlot) return;
-
-          // ✅ data-drop-zoneに当たる「箱（structure-box）」にだけ📦を出す
-          if (node.type === 'structure-box') {
-            addSlot.appendChild(this.ui.createAddControls(this, node.id));
-          } else {
-            addSlot.innerHTML = ""; // 親（グリッドセット等）では何も出さない
-          }
-        });
-
-        // 「+ 枠を追加」ボタンの特殊処理
-        container.querySelectorAll("[data-blockadd-for]").forEach(slot => {
-          this._setupBlockAddButton(slot, tree);
-        });
-      }
-      // ---------------------------------------------------------------
-
-
-      /**
-       * 構造体（グリッド等）専用の「枠を追加」ボタンをセットアップする
-       * @private
-       */
-      _setupBlockAddButton(slot, tree) {
-        const id = slot.getAttribute("data-blockadd-for");
-        const node = this.logic.findNodeById(tree, id);
-        if (!node) return;
-
-        const def = this.ctx.ELEMENT_DEFS[node.type];
-        const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = def.template;
-        const dz = tempDiv.querySelector(`[${this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE}]`);
-        const label = dz ? dz.getAttribute(this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE) : "枠";
-
-        const btnWrapper = this.ui.parseHtml(`
-          <div class="tree-block-add-wrap">
-            <button type="button" class="blockAddBtn">+ ${label}を追加</button>
-          </div>
-        `);
-
-        btnWrapper.querySelector('button').onclick = (e) => {
-          e.stopPropagation();
-          this.fastAddFrame(node); // さきほど整理した fastAddFrame を呼び出し
-        };
-        slot.replaceWith(btnWrapper);
-      }
-      // ---------------------------------------------------------------
-
-  // ---------------------------------------------------------------
+  
 
 
 
@@ -1514,6 +1466,9 @@ export class WebModuleBuilder {
 
 
 
+
+
+
   /**
    * サイドバーの各行とプレビューDOM間のホバー（強調表示）イベントをバインドする
    * @param {HTMLElement} parent - イベントを監視するサイドバーの親コンテナ
@@ -1535,30 +1490,32 @@ export class WebModuleBuilder {
     });
   }
 
-  /**
-   * 指定したIDの要素（プレビュー側とサイドバー側両方）のホバー状態を同期する
-   * @param {string} id - 対象のノードID
-   * @param {boolean} isActive - ホバー中かどうか
-   * @private
-   */
-  _toggleHighlight(id, isActive) {
-    const attr = "data-tree-hover";
+      /**
+       * 指定したIDの要素（プレビュー側とサイドバー側両方）のホバー状態を同期する
+       * @param {string} id - 対象のノードID
+       * @param {boolean} isActive - ホバー中かどうか
+       * @private
+       */
+      _toggleHighlight(id, isActive) {
+        const attr = "data-tree-hover";
 
-    // 1. プレビュー側の要素を操作
-    const previewEl = document.querySelector(`[${this.ctx.CONFIG.ATTRIBUTES.TREE_ID}="${id}"]`);
-    if (previewEl) {
-      // クラスは使わず、属性だけで状態を管理
-      previewEl.setAttribute(attr, isActive ? 'true' : 'false');
-    }
+        // 1. プレビュー側の要素を操作
+        const previewEl = document.querySelector(`[${this.ctx.CONFIG.ATTRIBUTES.TREE_ID}="${id}"]`);
+        if (previewEl) {
+          // クラスは使わず、属性だけで状態を管理
+          previewEl.setAttribute(attr, isActive ? 'true' : 'false');
+        }
 
-    // 2. サイドバー側の行（ツリーアイテム）を操作
-    const sidebarRow = document.querySelector(`[data-row-id="${id}"]`);
-    if (sidebarRow) {
-      // サイドバー側も属性で管理するように変更
-      sidebarRow.setAttribute(attr, isActive ? 'true' : 'false');
-    }
-  }
-  // ---------------------------------------------------------------
+        // 2. サイドバー側の行（ツリーアイテム）を操作
+        const sidebarRow = document.querySelector(`[data-row-id="${id}"]`);
+        if (sidebarRow) {
+          // サイドバー側も属性で管理するように変更
+          sidebarRow.setAttribute(attr, isActive ? 'true' : 'false');
+        }
+      }
+      // ---------------------------------------------------------------
+
+
 
 
 
@@ -2215,9 +2172,6 @@ export class WebModuleBuilder {
   togglePreviewDrag(enabled) {
     // ✅ stateを正にする
     this.uiState.previewDragEnabled = enabled;
-
-    // 既存互換（まだ消さない）
-    this.previewDragEnabled = enabled;
 
     const container = document.querySelector(this.ctx.CONFIG.SELECTORS.CONTAINER_INNER);
     if (container) container.classList.toggle('drag-enabled', enabled);
