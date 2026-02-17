@@ -308,13 +308,13 @@ export class WebModuleUI {
     toolbarEl.querySelector('#import-btn').onclick = () => builder.importJSON();
     toolbarEl.querySelector('#clear-btn').onclick = () => builder.clearLocalStorage();
 
-    // ✅ ページ切替
+    // ページ切替
     const pageSel = toolbarEl.querySelector('#page-select');
     if (pageSel) {
       pageSel.onchange = (e) => builder.setActivePage(e.target.value);
     }
 
-    // ✅ ページ追加
+    // ページ追加
     const addPageBtn = toolbarEl.querySelector('#add-page-btn');
     if (addPageBtn) {
       addPageBtn.onclick = () => {

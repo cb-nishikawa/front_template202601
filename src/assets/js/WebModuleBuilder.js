@@ -9,7 +9,6 @@ export class WebModuleBuilder {
     this.logic = new WebModuleLogic(this.ctx);
     this.ui = new WebModuleUI(this);
 
-    // 既存：project（いったん残す）
     const pageId = "page-" + Math.random().toString(36).slice(2, 9);
     this.state = {
       project: {
@@ -25,11 +24,6 @@ export class WebModuleBuilder {
       },
       history: []
     };
-
-    // 既存（いったん残す）
-    this.previewDragEnabled = false;
-    this.historyStack = [];
-    this.selectedModules = [];
 
     this.handleKeyDown = this.handleKeyDown.bind(this);
   }
@@ -59,10 +53,6 @@ export class WebModuleBuilder {
 
   set tree(next) {
     this._getActivePage().tree = Array.isArray(next) ? next : [];
-  }
-
-  isPreviewDragEnabled() {
-    return !!this.uiState.previewDragEnabled;
   }
 
   get selectedModuleCounts() {
@@ -136,6 +126,10 @@ export class WebModuleBuilder {
     if (!previewRoot) return;
 
     this._refreshInternalData(treeData, previewRoot);
+
+    // Undo用スナップショット
+    this.pushHistory(JSON.parse(JSON.stringify(this.tree)));
+
     this._renderPreview(previewRoot);
     this.renderSidebar(this.tree);
 
@@ -885,13 +879,16 @@ export class WebModuleBuilder {
   // ---------------------------------------------------------------
   handleKeyDown(e) {
     if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !['INPUT', 'TEXTAREA'].includes(e.target.tagName)) {
-      if (this.historyStack.length > 1) {
-        // 現在の状態を捨てて、一つ前のデータを復元
-        this.historyStack.pop();
-        const prevData = this.historyStack[this.historyStack.length - 1];
-        
-        // applyNewOrder を使わず、データから再描画
-        this.syncView(prevData);
+
+      if (this.history.length > 1) {
+        this.history.pop();
+
+        const prevSnapshot = this.history[this.history.length - 1];
+
+        // tree復元
+        this.tree = JSON.parse(JSON.stringify(prevSnapshot));
+
+        this.syncView();
       }
     }
   }
@@ -1428,16 +1425,29 @@ export class WebModuleBuilder {
        * @private
        */
       _applyIndividualStyle(el, prop, val, targetId, selector) {
-        const safeSelector = selector.replace(/\./g, '-');
-        const uniqueVar = `--id-${targetId}${safeSelector}-${prop}`;
+
+        const toSafeToken = (s = "") =>
+          String(s)
+            .trim()
+            .replace(/[^a-zA-Z0-9_-]/g, "-")
+            .replace(/-+/g, "-")
+            .replace(/^-|-$/g, "");
+
+        const safeSelector = selector ? `-${toSafeToken(selector)}` : "";
+        const safeProp = toSafeToken(prop);
+
+        const uniqueVar = `--id-${targetId}${safeSelector}-${safeProp}`;
 
         el.style.setProperty(uniqueVar, val);
         el.style.setProperty(prop, `var(${uniqueVar})`);
 
-        // 自由入力がある場合、末尾に再結合して優先順位を守る
         const customCss = el.dataset.lastCustomCss;
         if (customCss) {
-          el.style.cssText = el.style.cssText.split(';').filter(s => s.trim() && !s.includes(customCss)).join(';') + "; " + customCss;
+          el.style.cssText =
+            el.style.cssText
+              .split(';')
+              .filter(s => s.trim() && !s.includes(customCss))
+              .join(';') + "; " + customCss;
         }
       }
       // ---------------------------------------------------------------
