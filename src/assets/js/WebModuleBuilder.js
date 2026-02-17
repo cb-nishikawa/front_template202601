@@ -102,6 +102,8 @@ export class WebModuleBuilder {
     // ✅ toolbar は project 復元後に描画（ページ一覧が反映される）
     this.renderToolbar();
 
+    this.renderMenu();
+
     // 保存が無いときだけHTMLから初期ページを作る
     if (!hasSaved && previewRoot && previewRoot.children.length > 0) {
       this._getActivePage().tree = this.logic.buildModuleTree(previewRoot);
@@ -449,11 +451,11 @@ export class WebModuleBuilder {
               
               return `
                 <li data-id="${id}" class="tree-item">
-                  <div class="parent${isStrBox ? " no-drag structure-row" : ""}" data-row-id="${id}">
+                  <div class="contents${isStrBox ? " no-drag structure-row" : ""}" data-row-id="${id}">
                     ${!isStrBox ? `<span class="drag-handle">≡</span>` : ""}
-                    <span class="label-text">${isStrBox ? `[${this.ui.escapeHtml(node.label)}]` : this.ui.escapeHtml(node.label)}</span>
-                    <div class="row-controls">
-                      <div class="manage-controls" data-manage-for="${id}">
+                    <span class="label">${isStrBox ? `[${this.ui.escapeHtml(node.label)}]` : this.ui.escapeHtml(node.label)}</span>
+                    <div class="controlsWrapper">
+                      <div class="controlsWrapper" data-manage-for="${id}">
                         <div class="add-controls" data-add-for="${id}"></div>
                       </div>
                     </div>
@@ -522,8 +524,8 @@ export class WebModuleBuilder {
                     const label = dz ? dz.getAttribute(this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE) : "枠";
 
                     const btnWrapper = this.ui.parseHtml(`
-                      <div class="tree-block-add-wrap">
-                        <button type="button" class="blockAddBtn">+ ${label}を追加</button>
+                      <div class="bottomWrapper">
+                        <button type="button" class="addBtn">+ ${label}を追加</button>
                       </div>
                     `);
 
@@ -615,7 +617,7 @@ export class WebModuleBuilder {
         pull: true,
         put: (to) => this._canPutInTree(to)
       },
-      filter: '.moduleAddBtn, .editBtn, .deleteBtn, .blockAddBtn',
+      filter: '.editBtn, .deleteBtn, .blockAddBtn',
       onEnd: (evt) => this._onDragEnd(evt, 'sidebar')
     });
   }
@@ -1802,7 +1804,7 @@ export class WebModuleBuilder {
    * UIの具体的な構築ロジックは this.ui.createToolbar に委譲する
    */
   renderToolbar() {
-    const selector = this.ctx.CONFIG.SELECTORS.TOOLBAR || '#builder-toolbar';
+    const selector = this.ctx.CONFIG.SELECTORS.TOOLBAR || '[data-target="treeToolbar"]';
     const container = document.querySelector(selector);
     
     if (!container) {
@@ -1901,6 +1903,32 @@ export class WebModuleBuilder {
     return !!this.uiState.previewDragEnabled;
   }
   // ---------------------------------------------------------------
+
+
+  /* ================================================================================================
+    Menu
+  ================================================================================================ */
+
+  renderMenu() {
+    const selector = this.ctx.CONFIG.SELECTORS?.MENU || '[data-target="treeMenu"]';
+    const container = document.querySelector(selector);
+    if (!container) return;
+
+    container.innerHTML = '';
+    const menuEl = this.ui.createMenu(this);
+    if (menuEl) container.appendChild(menuEl);
+  }
+
+  toggleTreePanel() {
+    const treeBlock = document.querySelector('[data-target="treePanel"]');
+    if (!treeBlock) return false;
+
+    const hidden = treeBlock.classList.toggle('is-hidden');
+    return hidden;
+  }
+
+
+
 
 
 

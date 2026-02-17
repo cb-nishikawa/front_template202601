@@ -27,7 +27,7 @@ export class WebModuleUI {
    */
   // ---------------------------------------------------------------
   createEditButton(node) {
-    const html = `<button type="button" class="editBtn" title="編集" data-tree-ignore>⚙</button>`;
+    const html = `<button type="button" class="miniBtn" title="編集" data-tree-ignore>⚙</button>`;
     const btn = this.parseHtml(html);
     btn.onclick = (e) => {
       e.stopPropagation();
@@ -47,7 +47,7 @@ export class WebModuleUI {
    */
   // ---------------------------------------------------------------
   createDeleteButton(node) {
-    const html = `<button type="button" class="deleteBtn" title="削除" data-tree-ignore>×</button>`;
+    const html = `<button type="button" class="miniBtn" title="削除" data-tree-ignore>×</button>`;
     const btn = this.parseHtml(html);
     btn.onclick = (e) => {
       e.stopPropagation();
@@ -97,8 +97,8 @@ export class WebModuleUI {
   // ---------------------------------------------------------------
   createBlockAddBtn(node) {
     const html = `
-      <div class="tree-block-add-wrap">
-        <button type="button" class="blockAddBtn">+ ${node.label}を追加</button>
+      <div class="bottomWrapper">
+        <button type="button" class="addBtn">+ ${node.label}を追加</button>
       </div>`;
     const btnWrap = this.parseHtml(html);
     btnWrap.querySelector('button').onclick = () => {
@@ -269,23 +269,22 @@ export class WebModuleUI {
       .join("");
 
     const html = `
-      <div class="toolbar-inner">
-        <div class="toolbar-group">
-          <button type="button" id="export-btn" class="toolbar-btn">エクスポート</button>
-          <button type="button" id="import-btn" class="toolbar-btn">インポート</button>
-          <button type="button" id="clear-btn" class="toolbar-btn btn-danger">初期化</button>
+      <div class="wrapper">
+        <div class="block">
+          <button type="button" id="export-btn" class="btn">エクスポート</button>
+          <button type="button" id="import-btn" class="btn">インポート</button>
+          <button type="button" id="clear-btn" class="btn btn-danger">初期化</button>
         </div>
 
-        <!-- ✅ 追加：ページ選択/追加/削除 -->
-        <div class="toolbar-group">
-          <select id="page-select" class="toolbar-btn" style="height:32px;">
+        <div class="block">
+          <select id="page-select" class="btn" style="height:32px;">
             ${pageOptions}
           </select>
-          <button type="button" id="add-page-btn" class="toolbar-btn">＋ページ</button>
-          <button type="button" id="del-page-btn" class="toolbar-btn btn-danger">🗑 ページ削除</button>
+          <button type="button" id="add-page-btn" class="btn">＋ページ</button>
+          <button type="button" id="del-page-btn" class="btn is-danger">🗑 ページ削除</button>
         </div>
 
-        <div class="toolbar-group">
+        <div class="block">
           <label class="toggle-switch-inline">
             <input type="checkbox" id="preview-drag-toggle" ${builder.uiState.previewDragEnabled ? "checked" : ""}>
             <span class="toggle-slider"></span>
@@ -383,7 +382,49 @@ export class WebModuleUI {
   // ---------------------------------------------------------------
 
 
+  /**
+   * ツリーメニュー（ツリー表示/非表示トグル）を生成する
+   * - ボタンは HTML リテラルから生成し、クリックで `.block.tree` の `is-hidden` をトグルする
+   * @param {WebModuleBuilder} builder - 呼び出し元のビルダー
+   * @returns {Element} メニュー要素（ボタン）
+   */
+  createMenu(builder) {
+    const html = `
+      <button
+        type="button"
+        class="treeMenu-btn"
+        data-action="toggle-tree"
+        aria-pressed="false"
+      >◀</button>
+    `.trim();
 
+    const btn = this.parseHtml(html);
 
+    const treeBlock = document.querySelector('[data-target="treePanel"]');
+    const hidden = !!treeBlock?.classList.contains('is-hidden');
+    this._setTreeToggleBtnState(btn, hidden);
+
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const nextHidden = builder.toggleTreePanel();
+      this._setTreeToggleBtnState(btn, nextHidden);
+    });
+
+    return btn;
+  }
+
+  /**
+   * ツリートグルボタンの状態をクラスで反映する
+   * @param {Element} btn
+   * @param {boolean} hidden
+   * @returns {void}
+   */
+  _setTreeToggleBtnState(btn, hidden) {
+    btn.classList.toggle('is-hidden', hidden);
+    btn.setAttribute('aria-pressed', String(hidden));
+  }
+  // ---------------------------------------------------------------
+  
 
 } 

@@ -2,8 +2,8 @@ import { WebModuleBuilder } from './WebModuleBuilder.js';
 
 export const CONFIG = {
   SELECTORS: {
-    CONTAINER_INNER: '[data-target="container"] .inner .block.contents',
-    TREE_DISPLAY_INNER: '[data-target="treeDisplay"] .inner',
+    CONTAINER_INNER: '[data-target="container"]',
+    TREE_DISPLAY_INNER: '[data-target="treeDisplay"]',
     EXCLUDE_AREAS: '[data-target="treeDisplay"], [data-target="treeSet"]',
     STYLE_BLOCK: '.block.style',
     STYLE_PANEL_INNER: '#style-edit-panel .inner'

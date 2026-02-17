@@ -10,28 +10,20 @@
 </head>
 <body>
 
-    
+    <div class="g-treeSet" data-target="treeSet">
+        <div class="block menu">
+            <div class="g-menu" data-target="treeMenu"></div>
+        </div>
+        <div class="block tree" data-target="treePanel">
+            <div class="g-treeToolbar" data-target="treeToolbar"></div>
+            <div class="g-treeDisplay" data-target="treeDisplay"></div>
+        </div>
+    </div>
 
     <!-- コンテナー -->
-    <div class="g-container" data-target="container">
+    <div class="g-container">
          <div class="wrapper">
             <div class="inner">
-                <div class="block tree">
-                    <!-- ツリーセット -->
-                    <div class="g-treeSet" data-target="treeSet">
-                        <div class="wrapper">
-                            <div class="inner">
-                                <div class="toolbar" id="builder-toolbar"></div>
-                                
-                                <div class="g-treeDisplay" data-target="treeDisplay">
-                                    <div class="wrapper">
-                                        <div class="inner"></div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
                 <div class="block style is-hidden">
                     <!-- スタイル -->
                      <div class="g-styleSet" data-target="styleSet">
@@ -48,13 +40,11 @@
                     </div>
                 </div>
                 <div class="block contents">
+                    <div class="g-preview" data-target="container"></div>
                 </div>
             </div>
          </div>
     </div>
-    
-    
-
     
 
 
