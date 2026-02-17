@@ -18,19 +18,13 @@ export class WebModuleBuilder {
       },
       ui: {
         previewDragEnabled: false,
-        selectedModules: [],
-        selectedModuleCounts: {},
+        sheetSelectedKey: null,
         sheetAllowDuplicates: false
       },
       history: []
     };
 
     this.handleKeyDown = this.handleKeyDown.bind(this);
-  }
-
-
-  get projectState() {
-    return this.state.project;
   }
 
   get project() {
@@ -55,14 +49,6 @@ export class WebModuleBuilder {
     this._getActivePage().tree = Array.isArray(next) ? next : [];
   }
 
-  get selectedModuleCounts() {
-    return this.uiState.selectedModuleCounts;
-  }
-
-  set selectedModuleCounts(next) {
-    this.uiState.selectedModuleCounts = next || {};
-  }
-
   get sheetAllowDuplicates() {
     return !!this.uiState.sheetAllowDuplicates;
   }
@@ -75,14 +61,37 @@ export class WebModuleBuilder {
     return this.state.history;
   }
 
+  /**
+   * プレビュー操作（ドラッグ）が有効かどうかを返す
+   * @returns {boolean}
+   */
   isPreviewDragEnabled() {
     return !!this.uiState.previewDragEnabled;
   }
 
-  pushHistory(snapshot) {
-    this.state.history.push(snapshot);
-  }
 
+
+  /**
+   * 現在のツリー状態のスナップショットを履歴スタックへ保存する
+   *
+   * Undo機能用の状態管理。
+   * メモリ増加を防ぐため、履歴件数は最大 MAX 件に制限される。
+   *
+   * @param {Object[]} snapshot - 保存するツリーデータのディープコピー
+   *
+   * @example
+   * this.pushHistory(JSON.parse(JSON.stringify(this.tree)));
+   */
+  pushHistory(snapshot) {
+    const MAX = 50;
+
+    this.state.history.push(snapshot);
+
+    if (this.state.history.length > MAX) {
+      this.state.history.shift();
+    }
+  }
+  // ---------------------------------------------------------------
 
 
 
@@ -125,16 +134,18 @@ export class WebModuleBuilder {
     const previewRoot = document.querySelector(this.ctx.CONFIG.SELECTORS.CONTAINER_INNER);
     if (!previewRoot) return;
 
-    this._refreshInternalData(treeData, previewRoot);
+    // ✅ 外部から treeData が渡された時だけ履歴を積む（最小安全）
+    if (treeData) {
+      this.pushHistory(JSON.parse(JSON.stringify(this.tree)));
+    }
 
-    // Undo用スナップショット
-    this.pushHistory(JSON.parse(JSON.stringify(this.tree)));
+    this._refreshInternalData(treeData, previewRoot);
 
     this._renderPreview(previewRoot);
     this._renderSidebar(this.tree);
 
     this.saveToLocalStorage();
-    this.initPreviewSortable();
+    this._initPreviewSortable();
   }
   // ---------------------------------------------------------------
 
@@ -190,119 +201,308 @@ export class WebModuleBuilder {
         
         displayInner.appendChild(this.ui.createAddControls(this, null));
 
-        const treeHtml = `<ul class="sortable-list root-sortable-list">${this._buildTreeHtml(tree)}</ul>`;
+        const treeHtml = `<ul class="sortable-list root-sortable-list">${this._buildTreeHtml(this.tree)}</ul>`;
         displayInner.insertAdjacentHTML("beforeend", treeHtml);
 
         // 2. 各ノードへの動的部品（ボタン等）のマウント
-        this._mountTreeControls(displayInner, tree);
+        this._mountTreeControls(displayInner, this.tree);
 
         // 3. インタラクション（並び替え・ホバー）の初期化
-        displayInner.querySelectorAll("ul.sortable-list").forEach(ul => this.initSortable(ul));
-        this.bindHoverEvents(displayInner);
+        displayInner.querySelectorAll("ul.sortable-list").forEach(ul => this._initSortable(ul));
+        this._bindHoverEvents(displayInner);
+      }
+      // ---------------------------------------------------------------
+
+
+              /**
+               * ツリーデータから再帰的にHTML文字列を生成する
+               * @private
+               */
+              _buildTreeHtml(nodes) {
+                return nodes.map(node => {
+                  const id = this.ui.escapeHtml(node.id);
+                  const isStrBox = node.type === 'structure-box';
+                  const def = this.ctx.ELEMENT_DEFS[node.type];
+                  
+                  return `
+                    <li data-id="${id}" class="tree-item">
+                      <div class="parent${isStrBox ? " no-drag structure-row" : ""}" data-row-id="${id}">
+                        ${!isStrBox ? `<span class="drag-handle">≡</span>` : ""}
+                        <span class="label-text">${isStrBox ? `[${this.ui.escapeHtml(node.label)}]` : this.ui.escapeHtml(node.label)}</span>
+                        <div class="row-controls">
+                          <div class="manage-controls" data-manage-for="${id}">
+                            <div class="add-controls" data-add-for="${id}"></div>
+                          </div>
+                        </div>
+                      </div>
+                      <ul class="sortable-list">
+                        ${node.children ? this._buildTreeHtml(node.children) : ""}
+                      </ul>
+                      ${/* 特殊コンテナへの枠追加用スロット */
+                        (!isStrBox && def?.template.includes(this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE)) 
+                        ? `<div data-blockadd-for="${id}"></div>` : ""
+                      }
+                    </li>`.trim();
+                }).join("");
+              }
+              // ---------------------------------------------------------------
+
+
+              /**
+               * 生成されたHTML要素に対して、JSで生成したボタン類を流し込む
+               * @private
+               */
+              _mountTreeControls(container, tree) {
+                // 編集・削除・追加ボタンのマウント
+                container.querySelectorAll('.tree-item').forEach(li => {
+                  const id = li.getAttribute('data-id');
+                  const node = this.logic.findNodeById(tree, id);
+                  if (!node) return;
+
+                  const mSlot = li.querySelector(`[data-manage-for="${id}"]`);
+                  if (mSlot) {
+                    if (node.type !== 'structure-box') mSlot.prepend(this.ui.createEditButton(node));
+                    mSlot.appendChild(this.ui.createDeleteButton(node));
+                  }
+
+                  const addSlot = li.querySelector(`[data-add-for="${id}"]`);
+                  if (!addSlot) return;
+
+                  // ✅ data-drop-zoneに当たる「箱（structure-box）」にだけ📦を出す
+                  if (node.type === 'structure-box') {
+                    addSlot.appendChild(this.ui.createAddControls(this, node.id));
+                  } else {
+                    addSlot.innerHTML = ""; // 親（グリッドセット等）では何も出さない
+                  }
+                });
+
+                // 「+ 枠を追加」ボタンの特殊処理
+                container.querySelectorAll("[data-blockadd-for]").forEach(slot => {
+                  this._setupBlockAddButton(slot, tree);
+                });
+              }
+              // ---------------------------------------------------------------
+
+                      /**
+                       * 構造体（グリッド等）専用の「枠を追加」ボタンをセットアップする
+                       * @private
+                       */
+                      _setupBlockAddButton(slot, tree) {
+                        const id = slot.getAttribute("data-blockadd-for");
+                        const node = this.logic.findNodeById(tree, id);
+                        if (!node) return;
+
+                        const def = this.ctx.ELEMENT_DEFS[node.type];
+                        const tempDiv = document.createElement('div');
+                        tempDiv.innerHTML = def.template;
+                        const dz = tempDiv.querySelector(`[${this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE}]`);
+                        const label = dz ? dz.getAttribute(this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE) : "枠";
+
+                        const btnWrapper = this.ui.parseHtml(`
+                          <div class="tree-block-add-wrap">
+                            <button type="button" class="blockAddBtn">+ ${label}を追加</button>
+                          </div>
+                        `);
+
+                        btnWrapper.querySelector('button').onclick = (e) => {
+                          e.stopPropagation();
+                          this.fastAddFrame(node); // さきほど整理した fastAddFrame を呼び出し
+                        };
+                        slot.replaceWith(btnWrapper);
+                      }
+                      // ---------------------------------------------------------------
+
+
+              /**
+               * サイドバーのツリー表示用 Sortable を初期化する
+               * @param {HTMLElement} ul - 対象のリスト要素
+               * @private
+               */
+              _initSortable(ul) {
+                // ✅ 重複バインド防止（プレビュー側と同じ方針）
+                if (ul._sortableInstance) {
+                  ul._sortableInstance.destroy();
+                  ul._sortableInstance = null;
+                }
+
+                ul._sortableInstance = new Sortable(ul, {
+                  ...this._getCommonSortableOptions('.drag-handle'),
+                  group: {
+                    name: 'nested',
+                    pull: true,
+                    put: (to) => this._canPutInTree(to)
+                  },
+                  filter: '.moduleAddBtn, .editBtn, .deleteBtn, .blockAddBtn',
+                  onEnd: (evt) => this._onDragEnd(evt, 'sidebar')
+                });
+              }
+              // ---------------------------------------------------------------
+
+                      /**
+                       * サイドバー側でのドロップ許可判定
+                       * @private
+                       */
+                      _canPutInTree(to) {
+                        // ルートリストならOK
+                        if (to.el.classList.contains('root-sortable-list')) return true;
+
+                        // 子要素（枠）なら structure-box の場合のみOK
+                        const parentLi = to.el.closest('.tree-item');
+                        if (parentLi) {
+                          const id = parentLi.getAttribute('data-id');
+                          const node = this.logic.findNodeById(this.tree, id);
+                          return !!(node && node.type === 'structure-box');
+                        }
+
+                        return false;
+                      }
+                      // ---------------------------------------------------------------
+
+              
+              /**
+               * サイドバーの各行とプレビューDOM間のホバー（強調表示）イベントをバインドする
+               * @param {HTMLElement} parent - イベントを監視するサイドバーの親コンテナ
+               */
+              _bindHoverEvents(parent) {
+                if (parent._hoverBound) return;
+                parent._hoverBound = true;
+
+                const getRowId = (e) => e.target.closest("[data-row-id]")?.getAttribute("data-row-id");
+
+                parent.addEventListener("mouseover", (e) => {
+                  const id = getRowId(e);
+                  if (id) this._toggleHighlight(id, true);
+                });
+
+                parent.addEventListener("mouseout", (e) => {
+                  const id = getRowId(e);
+                  if (id) this._toggleHighlight(id, false);
+                });
+              }
+
+                      /**
+                       * 指定したIDの要素（プレビュー側とサイドバー側両方）のホバー状態を同期する
+                       * @param {string} id - 対象のノードID
+                       * @param {boolean} isActive - ホバー中かどうか
+                       * @private
+                       */
+                      _toggleHighlight(id, isActive) {
+                        const attr = "data-tree-hover";
+
+                        // 1. プレビュー側の要素を操作
+                        const previewEl = document.querySelector(`[${this.ctx.CONFIG.ATTRIBUTES.TREE_ID}="${id}"]`);
+                        if (previewEl) {
+                          // クラスは使わず、属性だけで状態を管理
+                          previewEl.setAttribute(attr, isActive ? 'true' : 'false');
+                        }
+
+                        // 2. サイドバー側の行（ツリーアイテム）を操作
+                        const sidebarRow = document.querySelector(`[data-row-id="${id}"]`);
+                        if (sidebarRow) {
+                          // サイドバー側も属性で管理するように変更
+                          sidebarRow.setAttribute(attr, isActive ? 'true' : 'false');
+                        }
+                      }
+                      // ---------------------------------------------------------------
+
+
+
+
+      // ---------------------------------------------------------------
+
+
+
+      /**
+       * プレビューDOMに対して Sortable を初期化する
+       *
+       * プレビュー操作モード時のみ有効。
+       * syncView 後のDOM再構築に伴い再初期化される。
+       *
+       * @private
+       */
+      _initPreviewSortable() {
+        if (!this.isPreviewDragEnabled()) return;
+
+        const previewRoot = document.querySelector(this.ctx.CONFIG.SELECTORS.CONTAINER_INNER);
+        if (!previewRoot) return;
+
+        const containers = [previewRoot, ...Array.from(document.querySelectorAll(`[${this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE}]`))];
+
+        containers.forEach(container => {
+          // 重複バインド防止
+          if (container._sortableInstance) container._sortableInstance.destroy();
+
+          container._sortableInstance = new Sortable(container, {
+            ...this._getCommonSortableOptions('.preview-drag-handle'),
+            group: { name: 'preview-nested', pull: true, put: true },
+            invertSwap: true,
+            onEnd: (evt) => this._onDragEnd(evt, 'preview')
+          });
+        });
       }
       // ---------------------------------------------------------------
 
 
           /**
-           * ツリーデータから再帰的にHTML文字列を生成する
+           * SortableJS の共通オプションを取得する
+           * @param {string} handleSelector - ドラッグハンドルのセレクタ
            * @private
            */
-          _buildTreeHtml(nodes) {
-            return nodes.map(node => {
-              const id = this.ui.escapeHtml(node.id);
-              const isStrBox = node.type === 'structure-box';
-              const def = this.ctx.ELEMENT_DEFS[node.type];
-              
-              return `
-                <li data-id="${id}" class="tree-item">
-                  <div class="parent${isStrBox ? " no-drag structure-row" : ""}" data-row-id="${id}">
-                    ${!isStrBox ? `<span class="drag-handle">≡</span>` : ""}
-                    <span class="label-text">${isStrBox ? `[${this.ui.escapeHtml(node.label)}]` : this.ui.escapeHtml(node.label)}</span>
-                    <div class="row-controls">
-                      <div class="manage-controls" data-manage-for="${id}">
-                        <div class="add-controls" data-add-for="${id}"></div>
-                      </div>
-                    </div>
-                  </div>
-                  <ul class="sortable-list">
-                    ${node.children ? this._buildTreeHtml(node.children) : ""}
-                  </ul>
-                  ${/* 特殊コンテナへの枠追加用スロット */
-                    (!isStrBox && def?.template.includes(this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE)) 
-                    ? `<div data-blockadd-for="${id}"></div>` : ""
-                  }
-                </li>`.trim();
-            }).join("");
-          }
-          // ---------------------------------------------------------------
-
-
-          /**
-           * 生成されたHTML要素に対して、JSで生成したボタン類を流し込む
-           * @private
-           */
-          _mountTreeControls(container, tree) {
-            // 編集・削除・追加ボタンのマウント
-            container.querySelectorAll('.tree-item').forEach(li => {
-              const id = li.getAttribute('data-id');
-              const node = this.logic.findNodeById(tree, id);
-              if (!node) return;
-
-              const mSlot = li.querySelector(`[data-manage-for="${id}"]`);
-              if (mSlot) {
-                if (node.type !== 'structure-box') mSlot.prepend(this.ui.createEditButton(node));
-                mSlot.appendChild(this.ui.createDeleteButton(node));
-              }
-
-              const addSlot = li.querySelector(`[data-add-for="${id}"]`);
-              if (!addSlot) return;
-
-              // ✅ data-drop-zoneに当たる「箱（structure-box）」にだけ📦を出す
-              if (node.type === 'structure-box') {
-                addSlot.appendChild(this.ui.createAddControls(this, node.id));
-              } else {
-                addSlot.innerHTML = ""; // 親（グリッドセット等）では何も出さない
-              }
-            });
-
-            // 「+ 枠を追加」ボタンの特殊処理
-            container.querySelectorAll("[data-blockadd-for]").forEach(slot => {
-              this._setupBlockAddButton(slot, tree);
-            });
-          }
-          // ---------------------------------------------------------------
-
-
-          /**
-           * 構造体（グリッド等）専用の「枠を追加」ボタンをセットアップする
-           * @private
-           */
-          _setupBlockAddButton(slot, tree) {
-            const id = slot.getAttribute("data-blockadd-for");
-            const node = this.logic.findNodeById(tree, id);
-            if (!node) return;
-
-            const def = this.ctx.ELEMENT_DEFS[node.type];
-            const tempDiv = document.createElement('div');
-            tempDiv.innerHTML = def.template;
-            const dz = tempDiv.querySelector(`[${this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE}]`);
-            const label = dz ? dz.getAttribute(this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE) : "枠";
-
-            const btnWrapper = this.ui.parseHtml(`
-              <div class="tree-block-add-wrap">
-                <button type="button" class="blockAddBtn">+ ${label}を追加</button>
-              </div>
-            `);
-
-            btnWrapper.querySelector('button').onclick = (e) => {
-              e.stopPropagation();
-              this.fastAddFrame(node); // さきほど整理した fastAddFrame を呼び出し
+          _getCommonSortableOptions(handleSelector) {
+            return {
+              animation: 150,
+              handle: handleSelector,
+              fallbackOnBody: true,
+              swapThreshold: 0.65,
+              preventOnFilter: false
             };
-            slot.replaceWith(btnWrapper);
           }
           // ---------------------------------------------------------------
 
+
+
+          
+
+
+
+          /**
+           * ドラッグ終了時の共通処理
+           * @param {Object} evt - SortableJS のイベントオブジェクト
+           * @param {'sidebar'|'preview'} mode - どちらのエリアでの操作か
+           * @private
+           */
+          _onDragEnd(evt, mode) {
+            const { item, from, to, newIndex } = evt;
+            const isPreview = mode === 'preview';
+            
+            // ID取得用の属性名
+            const idAttr = isPreview ? this.ctx.CONFIG.ATTRIBUTES.TREE_ID : 'data-id';
+            const previewRoot = isPreview ? document.querySelector(this.ctx.CONFIG.SELECTORS.CONTAINER_INNER) : null;
+
+            // ターゲットIDの取得
+            const targetId = item.getAttribute(idAttr);
+
+            // 親IDの判定ロジック（プレビューとツリーで共通化）
+            const getParentId = (container) => {
+              if (isPreview) {
+                return (container === previewRoot) ? null : container.closest(`[${idAttr}]`)?.getAttribute(idAttr);
+              } else {
+                return container.classList.contains('root-sortable-list') ? null : container.closest('.tree-item')?.getAttribute('data-id');
+              }
+            };
+
+            const toId = getParentId(to);
+            const fromId = getParentId(from);
+
+            // データの移動と同期
+            this.moveTreeNode(targetId, fromId, toId, newIndex);
+            this.syncView();
+          }
+          // ---------------------------------------------------------------
+
+          
       // ---------------------------------------------------------------
+
 
 
   // ---------------------------------------------------------------
@@ -823,129 +1023,10 @@ export class WebModuleBuilder {
 
 
 
-  /**
-   * サイドバーのツリー表示用 Sortable を初期化する
-   * @param {HTMLElement} ul - 対象のリスト要素
-   */
-  initSortable(ul) {
-    new Sortable(ul, {
-      ...this._getCommonSortableOptions('.drag-handle'),
-      group: {
-        name: 'nested',
-        pull: true,
-        put: (to) => this._canPutInTree(to)
-      },
-      filter: '.moduleAddBtn, .editBtn, .deleteBtn, .blockAddBtn',
-      onEnd: (evt) => this._onDragEnd(evt, 'sidebar')
-    });
-  }
-  // ---------------------------------------------------------------
-
-
-  /**
-   * プレビューDOM側の Sortable を有効にする
-   */
-  initPreviewSortable() {
-    if (!this.isPreviewDragEnabled()) return;
-
-    const previewRoot = document.querySelector(this.ctx.CONFIG.SELECTORS.CONTAINER_INNER);
-    if (!previewRoot) return;
-
-    const containers = [previewRoot, ...Array.from(document.querySelectorAll(`[${this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE}]`))];
-
-    containers.forEach(container => {
-      // 重複バインド防止
-      if (container._sortableInstance) container._sortableInstance.destroy();
-
-      container._sortableInstance = new Sortable(container, {
-        ...this._getCommonSortableOptions('.preview-drag-handle'),
-        group: { name: 'preview-nested', pull: true, put: true },
-        invertSwap: true,
-        onEnd: (evt) => this._onDragEnd(evt, 'preview')
-      });
-    });
-  }
-  // ---------------------------------------------------------------
-
-
-      /**
-       * SortableJS の共通オプションを取得する
-       * @param {string} handleSelector - ドラッグハンドルのセレクタ
-       * @private
-       */
-      _getCommonSortableOptions(handleSelector) {
-        return {
-          animation: 150,
-          handle: handleSelector,
-          fallbackOnBody: true,
-          swapThreshold: 0.65,
-          preventOnFilter: false
-        };
-      }
-      // ---------------------------------------------------------------
 
 
 
-      /**
-       * サイドバー側でのドロップ許可判定
-       * @private
-       */
-      _canPutInTree(to) {
-        // ルートリストならOK
-        if (to.el.classList.contains('root-sortable-list')) return true;
-
-        // 子要素（枠）なら structure-box の場合のみOK
-        const parentLi = to.el.closest('.tree-item');
-        if (parentLi) {
-          const id = parentLi.getAttribute('data-id');
-          const node = this.logic.findNodeById(this.tree, id);
-          return !!(node && node.type === 'structure-box');
-        }
-
-        return false;
-      }
-      // ---------------------------------------------------------------
-
-
-
-      /**
-       * ドラッグ終了時の共通処理
-       * @param {Object} evt - SortableJS のイベントオブジェクト
-       * @param {'sidebar'|'preview'} mode - どちらのエリアでの操作か
-       * @private
-       */
-      _onDragEnd(evt, mode) {
-        const { item, from, to, newIndex } = evt;
-        const isPreview = mode === 'preview';
-        
-        // ID取得用の属性名
-        const idAttr = isPreview ? this.ctx.CONFIG.ATTRIBUTES.TREE_ID : 'data-id';
-        const previewRoot = isPreview ? document.querySelector(this.ctx.CONFIG.SELECTORS.CONTAINER_INNER) : null;
-
-        // ターゲットIDの取得
-        const targetId = item.getAttribute(idAttr);
-
-        // 親IDの判定ロジック（プレビューとツリーで共通化）
-        const getParentId = (container) => {
-          if (isPreview) {
-            return (container === previewRoot) ? null : container.closest(`[${idAttr}]`)?.getAttribute(idAttr);
-          } else {
-            return container.classList.contains('root-sortable-list') ? null : container.closest('.tree-item')?.getAttribute('data-id');
-          }
-        };
-
-        const toId = getParentId(to);
-        const fromId = getParentId(from);
-
-        // データの移動と同期
-        this.moveTreeNode(targetId, fromId, toId, newIndex);
-        this.syncView();
-      }
-      // ---------------------------------------------------------------
-
-      
-  // ---------------------------------------------------------------
-
+  
 
 
 
@@ -1469,54 +1550,7 @@ export class WebModuleBuilder {
 
 
 
-  /**
-   * サイドバーの各行とプレビューDOM間のホバー（強調表示）イベントをバインドする
-   * @param {HTMLElement} parent - イベントを監視するサイドバーの親コンテナ
-   */
-  bindHoverEvents(parent) {
-    if (parent._hoverBound) return;
-    parent._hoverBound = true;
-
-    const getRowId = (e) => e.target.closest("[data-row-id]")?.getAttribute("data-row-id");
-
-    parent.addEventListener("mouseover", (e) => {
-      const id = getRowId(e);
-      if (id) this._toggleHighlight(id, true);
-    });
-
-    parent.addEventListener("mouseout", (e) => {
-      const id = getRowId(e);
-      if (id) this._toggleHighlight(id, false);
-    });
-  }
-
-      /**
-       * 指定したIDの要素（プレビュー側とサイドバー側両方）のホバー状態を同期する
-       * @param {string} id - 対象のノードID
-       * @param {boolean} isActive - ホバー中かどうか
-       * @private
-       */
-      _toggleHighlight(id, isActive) {
-        const attr = "data-tree-hover";
-
-        // 1. プレビュー側の要素を操作
-        const previewEl = document.querySelector(`[${this.ctx.CONFIG.ATTRIBUTES.TREE_ID}="${id}"]`);
-        if (previewEl) {
-          // クラスは使わず、属性だけで状態を管理
-          previewEl.setAttribute(attr, isActive ? 'true' : 'false');
-        }
-
-        // 2. サイドバー側の行（ツリーアイテム）を操作
-        const sidebarRow = document.querySelector(`[data-row-id="${id}"]`);
-        if (sidebarRow) {
-          // サイドバー側も属性で管理するように変更
-          sidebarRow.setAttribute(attr, isActive ? 'true' : 'false');
-        }
-      }
-      // ---------------------------------------------------------------
-
-
-
+  
 
 
 
@@ -1879,12 +1913,14 @@ export class WebModuleBuilder {
     }
 
     // ✅ 単一選択なので、常にここでクリア
-    this.selectedModuleCounts = {};
+    this.sheetSelectedKey = null;
 
     this._renderSheetGrid();
 
     sheet.classList.remove('is-hidden');
     setTimeout(() => sheet.classList.add('is-active'), 10);
+
+    this._updateSheetFooter();
   }
   // ---------------------------------------------------------------
 
@@ -1899,36 +1935,28 @@ export class WebModuleBuilder {
         Object.entries(this.ctx.ELEMENT_DEFS).forEach(([key, def]) => {
           const itemEl = this.ui.createSheetItem(key, def);
 
+          // 初期表示（未選択 or 選択中）
+          const badge = itemEl.querySelector('.item-badge');
+          const isSelected = (this.sheetSelectedKey === key);
+          itemEl.classList.toggle('is-selected', isSelected);
+          if (badge) badge.textContent = isSelected ? "✓" : "";
+
           itemEl.onclick = () => {
             const k = itemEl.dataset.key;
-            const isAlreadySelected = (this.selectedModuleCounts[k] === 1);
 
-            // ✅ まず全部解除（単一選択）
-            grid.querySelectorAll('.sheet-item.is-selected').forEach(el => {
-              el.classList.remove('is-selected');
+            // クリックしたのが既に選択中なら解除、違うならそれに切替
+            this.sheetSelectedKey = (this.sheetSelectedKey === k) ? null : k;
+
+            // ✅ 単一選択なので、全要素を正しい状態に更新
+            grid.querySelectorAll('.sheet-item').forEach(el => {
+              const selected = (el.dataset.key === this.sheetSelectedKey);
+              el.classList.toggle('is-selected', selected);
               const b = el.querySelector('.item-badge');
-              if (b) b.textContent = ""; // 表示消す
+              if (b) b.textContent = selected ? "✓" : "";
             });
-            this.selectedModuleCounts = {};
-
-            // ✅ すでに選ばれてたなら「解除」で終わり
-            if (isAlreadySelected) {
-              this._updateSheetFooter();
-              return;
-            }
-
-            // ✅ そうでなければ、この1つだけ選択
-            this.selectedModuleCounts[k] = 1;
-            itemEl.classList.add('is-selected');
-            const badge = itemEl.querySelector('.item-badge');
-            if (badge) badge.textContent = "✓";
 
             this._updateSheetFooter();
           };
-
-          // 初期表示は未選択にする（badge消す）
-          const badge = itemEl.querySelector('.item-badge');
-          if (badge) badge.textContent = "";
 
           grid.appendChild(itemEl);
         });
@@ -1939,13 +1967,13 @@ export class WebModuleBuilder {
        * シート内の「追加ボタン」などの状態更新
        */
       _updateSheetFooter() {
+        const count = this.sheetSelectedKey ? 1 : 0;
+
+        const countEl = document.getElementById('selected-count');
+        if (countEl) countEl.textContent = String(count);
+
         const btn = document.getElementById('bulk-add-confirm-btn');
-        const count = document.getElementById('selected-count');
-
-        const total = Object.values(this.selectedModuleCounts).reduce((a, b) => a + b, 0);
-
-        if (count) count.textContent = String(total);
-        if (btn) btn.disabled = total === 0;
+        if (btn) btn.disabled = (count === 0);
       }
       // ---------------------------------------------------------------
 
@@ -1963,27 +1991,30 @@ export class WebModuleBuilder {
    * 選択したモジュールを一括でデータに追加
    */
   executeBulkAdd() {
+    const key = this.sheetSelectedKey;   // ✅ 単一選択のキー
+    if (!key) return;
+
+    const newNode = this.createInitialData(key);
+    if (!newNode) return;
+
     const targetParentId = this.pendingAddParentId;
 
-    Object.entries(this.selectedModuleCounts).forEach(([type, qty]) => {
-      for (let i = 0; i < qty; i++) {
-        const newNode = this.createInitialData(type);
-        if (!newNode) continue;
-
-        if (targetParentId) {
-          const parentNode = this.logic.findNodeById(this.tree, targetParentId);
-          if (parentNode) {
-            if (!Array.isArray(parentNode.children)) parentNode.children = [];
-            parentNode.children.push(newNode);
-          }
-        } else {
-          this.tree.push(newNode); // ✅ ここ
-        }
+    if (targetParentId) {
+      const parentNode = this.logic.findNodeById(this.tree, targetParentId);
+      if (parentNode) {
+        if (!Array.isArray(parentNode.children)) parentNode.children = [];
+        parentNode.children.push(newNode);
+      } else {
+        console.warn(`Target parent node not found: ${targetParentId}`);
       }
-    });
+    } else {
+      this.tree.push(newNode);
+    }
 
+    // ✅ 後処理（選択解除して閉じる）
     this.pendingAddParentId = null;
-    this.selectedModuleCounts = {};
+    this.sheetSelectedKey = null;
+
     this.syncView();
     this.saveToLocalStorage();
     this.closeModuleSheet();
