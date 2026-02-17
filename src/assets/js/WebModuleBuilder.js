@@ -4,6 +4,12 @@ import { WebModuleUI } from './WebModuleUI';
 
 export class WebModuleBuilder {
 
+
+
+  /* ================================================================================================
+    Core / State
+  ================================================================================================ */
+
   constructor(options) {
     this.ctx = { ...options, LABELS: options.CONFIG.LABELS };
     this.logic = new WebModuleLogic(this.ctx);
@@ -26,9 +32,10 @@ export class WebModuleBuilder {
 
     this.handleKeyDown = this.handleKeyDown.bind(this);
   }
-
-
   
+  /**
+   * getter/setter
+   */
 
   get project() {
     return this.state.project;
@@ -64,38 +71,23 @@ export class WebModuleBuilder {
     return this.state.history;
   }
 
-  /**
-   * プレビュー操作（ドラッグ）が有効かどうかを返す
-   * @returns {boolean}
-   */
-  isPreviewDragEnabled() {
-    return !!this.uiState.previewDragEnabled;
-  }
-
-
-
-  /**
-   * 現在のツリー状態のスナップショットを履歴スタックへ保存する
-   *
-   * Undo機能用の状態管理。
-   * メモリ増加を防ぐため、履歴件数は最大 MAX 件に制限される。
-   *
-   * @param {Object[]} snapshot - 保存するツリーデータのディープコピー
-   *
-   * @example
-   * this.pushHistory(JSON.parse(JSON.stringify(this.tree)));
-   */
-  pushHistory(snapshot) {
-    const MAX = 50;
-
-    this.state.history.push(snapshot);
-
-    if (this.state.history.length > MAX) {
-      this.state.history.shift();
-    }
-  }
   // ---------------------------------------------------------------
 
+
+  _getActivePage() {
+    const proj = this.project;
+    const p = proj.pages.find(x => x.id === proj.activePageId);
+    return p || proj.pages[0];
+  }
+
+  // ---------------------------------------------------------------
+
+
+
+
+  /* ================================================================================================
+    Lifecycle / View更新
+  ================================================================================================ */
 
 
   /**
@@ -120,15 +112,6 @@ export class WebModuleBuilder {
   }
   // ---------------------------------------------------------------
 
-
-  _getActivePage() {
-    const proj = this.project;
-    const p = proj.pages.find(x => x.id === proj.activePageId);
-    return p || proj.pages[0];
-  }
-
-
-
   /**
    * JSONデータを元に、プレビューDOMとサイドバーを一斉更新し、保存を行う
    * @param {Object[]|null} [treeData=null] - 外部から提供される新しいツリーデータ
@@ -145,363 +128,56 @@ export class WebModuleBuilder {
     this._refreshInternalData(treeData, previewRoot);
 
     this._renderPreview(previewRoot);
-    this._renderSidebar(this.tree);
+    this.renderSidebar(this.tree);
 
     this.saveToLocalStorage();
     this._initPreviewSortable();
   }
   // ---------------------------------------------------------------
 
+          /**
+           * 引数の有無や現在の状態に応じて、JSONデータ を最新状態に同期する
+           * @param {Object[]|null} treeData - 新しく提供されたツリーデータ
+           * @param {HTMLElement} previewRoot - 現在のプレビューDOM
+           * @private
+           */
+          _refreshInternalData(treeData, previewRoot) {
+            // ✅ 外部から tree が渡された場合だけ更新
+            if (treeData) {
+              this._getActivePage().tree = JSON.parse(JSON.stringify(treeData));
+              return;
+            }
 
-
-      /**
-       * 引数の有無や現在の状態に応じて、JSONデータ を最新状態に同期する
-       * @param {Object[]|null} treeData - 新しく提供されたツリーデータ
-       * @param {HTMLElement} previewRoot - 現在のプレビューDOM
-       * @private
-       */
-      _refreshInternalData(treeData, previewRoot) {
-        // ✅ 外部から tree が渡された場合だけ更新
-        if (treeData) {
-          this._getActivePage().tree = JSON.parse(JSON.stringify(treeData));
-          return;
-        }
-
-        // ✅ ページ構造では「DOMからの自動復元をしない」
-        // 空ページは空のまま維持
-      }
-      // ---------------------------------------------------------------
-
-
-      /**
-       * JSONデータ に基づき、プレビューエリアのDOMをゼロから構築する
-       * @param {HTMLElement} previewRoot - 描画先のコンテナ
-       * @private
-       */
-      _renderPreview(previewRoot) {
-        previewRoot.innerHTML = "";
-
-        this.tree.forEach(node => {
-          const el = this.renderNode(node);
-          if (el) {
-            previewRoot.appendChild(el);
+            // ✅ ページ構造では「DOMからの自動復元をしない」
+            // 空ページは空のまま維持
           }
-        });
-      }
-      // ---------------------------------------------------------------
+          // ---------------------------------------------------------------
 
 
-      /**
-       * サイドバーのツリー構造を生成・描画し、各種ボタンやSortableを初期化する
-       * @param {Object[]} tree - 表示対象のツリーデータ
-       */
-      _renderSidebar(tree) {
-        const displayInner = document.querySelector(this.ctx.CONFIG.SELECTORS.TREE_DISPLAY_INNER);
-        if (!displayInner) return;
+          /**
+           * JSONデータ に基づき、プレビューエリアのDOMをゼロから構築する
+           * @param {HTMLElement} previewRoot - 描画先のコンテナ
+           * @private
+           */
+          _renderPreview(previewRoot) {
+            previewRoot.innerHTML = "";
 
-        // 1. 基本構造の描画
-        displayInner.innerHTML = "";
-        
-        displayInner.appendChild(this.ui.createAddControls(this, null));
-
-        const treeHtml = `<ul class="sortable-list root-sortable-list">${this._buildTreeHtml(this.tree)}</ul>`;
-        displayInner.insertAdjacentHTML("beforeend", treeHtml);
-
-        // 2. 各ノードへの動的部品（ボタン等）のマウント
-        this._mountTreeControls(displayInner, this.tree);
-
-        // 3. インタラクション（並び替え・ホバー）の初期化
-        displayInner.querySelectorAll("ul.sortable-list").forEach(ul => this._initSortable(ul));
-        this._bindHoverEvents(displayInner);
-      }
-      // ---------------------------------------------------------------
-
-
-              /**
-               * ツリーデータから再帰的にHTML文字列を生成する
-               * @private
-               */
-              _buildTreeHtml(nodes) {
-                return nodes.map(node => {
-                  const id = this.ui.escapeHtml(node.id);
-                  const isStrBox = node.type === 'structure-box';
-                  const def = this.ctx.ELEMENT_DEFS[node.type];
-                  
-                  return `
-                    <li data-id="${id}" class="tree-item">
-                      <div class="parent${isStrBox ? " no-drag structure-row" : ""}" data-row-id="${id}">
-                        ${!isStrBox ? `<span class="drag-handle">≡</span>` : ""}
-                        <span class="label-text">${isStrBox ? `[${this.ui.escapeHtml(node.label)}]` : this.ui.escapeHtml(node.label)}</span>
-                        <div class="row-controls">
-                          <div class="manage-controls" data-manage-for="${id}">
-                            <div class="add-controls" data-add-for="${id}"></div>
-                          </div>
-                        </div>
-                      </div>
-                      <ul class="sortable-list">
-                        ${node.children ? this._buildTreeHtml(node.children) : ""}
-                      </ul>
-                      ${/* 特殊コンテナへの枠追加用スロット */
-                        (!isStrBox && def?.template.includes(this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE)) 
-                        ? `<div data-blockadd-for="${id}"></div>` : ""
-                      }
-                    </li>`.trim();
-                }).join("");
+            this.tree.forEach(node => {
+              const el = this.renderNode(node);
+              if (el) {
+                previewRoot.appendChild(el);
               }
-              // ---------------------------------------------------------------
-
-
-              /**
-               * 生成されたHTML要素に対して、JSで生成したボタン類を流し込む
-               * @private
-               */
-              _mountTreeControls(container, tree) {
-                // 編集・削除・追加ボタンのマウント
-                container.querySelectorAll('.tree-item').forEach(li => {
-                  const id = li.getAttribute('data-id');
-                  const node = this.logic.findNodeById(tree, id);
-                  if (!node) return;
-
-                  const mSlot = li.querySelector(`[data-manage-for="${id}"]`);
-                  if (mSlot) {
-                    if (node.type !== 'structure-box') mSlot.prepend(this.ui.createEditButton(node));
-                    mSlot.appendChild(this.ui.createDeleteButton(node));
-                  }
-
-                  const addSlot = li.querySelector(`[data-add-for="${id}"]`);
-                  if (!addSlot) return;
-
-                  // ✅ data-drop-zoneに当たる「箱（structure-box）」にだけ📦を出す
-                  if (node.type === 'structure-box') {
-                    addSlot.appendChild(this.ui.createAddControls(this, node.id));
-                  } else {
-                    addSlot.innerHTML = ""; // 親（グリッドセット等）では何も出さない
-                  }
-                });
-
-                // 「+ 枠を追加」ボタンの特殊処理
-                container.querySelectorAll("[data-blockadd-for]").forEach(slot => {
-                  this._setupBlockAddButton(slot, tree);
-                });
-              }
-              // ---------------------------------------------------------------
-
-                      /**
-                       * 構造体（グリッド等）専用の「枠を追加」ボタンをセットアップする
-                       * @private
-                       */
-                      _setupBlockAddButton(slot, tree) {
-                        const id = slot.getAttribute("data-blockadd-for");
-                        const node = this.logic.findNodeById(tree, id);
-                        if (!node) return;
-
-                        const def = this.ctx.ELEMENT_DEFS[node.type];
-                        const tempDiv = document.createElement('div');
-                        tempDiv.innerHTML = def.template;
-                        const dz = tempDiv.querySelector(`[${this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE}]`);
-                        const label = dz ? dz.getAttribute(this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE) : "枠";
-
-                        const btnWrapper = this.ui.parseHtml(`
-                          <div class="tree-block-add-wrap">
-                            <button type="button" class="blockAddBtn">+ ${label}を追加</button>
-                          </div>
-                        `);
-
-                        btnWrapper.querySelector('button').onclick = (e) => {
-                          e.stopPropagation();
-                          this.addStructure(node); // さきほど整理した addStructure を呼び出し
-                        };
-                        slot.replaceWith(btnWrapper);
-                      }
-                      // ---------------------------------------------------------------
-
-
-              /**
-               * サイドバーのツリー表示用 Sortable を初期化する
-               * @param {HTMLElement} ul - 対象のリスト要素
-               * @private
-               */
-              _initSortable(ul) {
-                // ✅ 重複バインド防止（プレビュー側と同じ方針）
-                if (ul._sortableInstance) {
-                  ul._sortableInstance.destroy();
-                  ul._sortableInstance = null;
-                }
-
-                ul._sortableInstance = new Sortable(ul, {
-                  ...this._getCommonSortableOptions('.drag-handle'),
-                  group: {
-                    name: 'nested',
-                    pull: true,
-                    put: (to) => this._canPutInTree(to)
-                  },
-                  filter: '.moduleAddBtn, .editBtn, .deleteBtn, .blockAddBtn',
-                  onEnd: (evt) => this._onDragEnd(evt, 'sidebar')
-                });
-              }
-              // ---------------------------------------------------------------
-
-                      /**
-                       * サイドバー側でのドロップ許可判定
-                       * @private
-                       */
-                      _canPutInTree(to) {
-                        // ルートリストならOK
-                        if (to.el.classList.contains('root-sortable-list')) return true;
-
-                        // 子要素（枠）なら structure-box の場合のみOK
-                        const parentLi = to.el.closest('.tree-item');
-                        if (parentLi) {
-                          const id = parentLi.getAttribute('data-id');
-                          const node = this.logic.findNodeById(this.tree, id);
-                          return !!(node && node.type === 'structure-box');
-                        }
-
-                        return false;
-                      }
-                      // ---------------------------------------------------------------
-
-              
-              /**
-               * サイドバーの各行とプレビューDOM間のホバー（強調表示）イベントをバインドする
-               * @param {HTMLElement} parent - イベントを監視するサイドバーの親コンテナ
-               */
-              _bindHoverEvents(parent) {
-                if (parent._hoverBound) return;
-                parent._hoverBound = true;
-
-                const getRowId = (e) => e.target.closest("[data-row-id]")?.getAttribute("data-row-id");
-
-                parent.addEventListener("mouseover", (e) => {
-                  const id = getRowId(e);
-                  if (id) this._toggleHighlight(id, true);
-                });
-
-                parent.addEventListener("mouseout", (e) => {
-                  const id = getRowId(e);
-                  if (id) this._toggleHighlight(id, false);
-                });
-              }
-              // ---------------------------------------------------------------
-
-                      /**
-                       * 指定したIDの要素（プレビュー側とサイドバー側両方）のホバー状態を同期する
-                       * @param {string} id - 対象のノードID
-                       * @param {boolean} isActive - ホバー中かどうか
-                       * @private
-                       */
-                      _toggleHighlight(id, isActive) {
-                        const attr = "data-tree-hover";
-
-                        // 1. プレビュー側の要素を操作
-                        const previewEl = document.querySelector(`[${this.ctx.CONFIG.ATTRIBUTES.TREE_ID}="${id}"]`);
-                        if (previewEl) {
-                          // クラスは使わず、属性だけで状態を管理
-                          previewEl.setAttribute(attr, isActive ? 'true' : 'false');
-                        }
-
-                        // 2. サイドバー側の行（ツリーアイテム）を操作
-                        const sidebarRow = document.querySelector(`[data-row-id="${id}"]`);
-                        if (sidebarRow) {
-                          // サイドバー側も属性で管理するように変更
-                          sidebarRow.setAttribute(attr, isActive ? 'true' : 'false');
-                        }
-                      }
-                      // ---------------------------------------------------------------
-
-              // ---------------------------------------------------------------
+            });
+          }
+          // ---------------------------------------------------------------
 
       // ---------------------------------------------------------------
 
 
 
-      /**
-       * プレビューDOMに対して Sortable を初期化する
-       *
-       * プレビュー操作モード時のみ有効。
-       * syncView 後のDOM再構築に伴い再初期化される。
-       *
-       * @private
-       */
-      _initPreviewSortable() {
-        if (!this.isPreviewDragEnabled()) return;
-
-        const previewRoot = document.querySelector(this.ctx.CONFIG.SELECTORS.CONTAINER_INNER);
-        if (!previewRoot) return;
-
-        const containers = [previewRoot, ...Array.from(document.querySelectorAll(`[${this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE}]`))];
-
-        containers.forEach(container => {
-          // 重複バインド防止
-          if (container._sortableInstance) container._sortableInstance.destroy();
-
-          container._sortableInstance = new Sortable(container, {
-            ...this._getCommonSortableOptions('.preview-drag-handle'),
-            group: { name: 'preview-nested', pull: true, put: true },
-            invertSwap: true,
-            onEnd: (evt) => this._onDragEnd(evt, 'preview')
-          });
-        });
-      }
-      // ---------------------------------------------------------------
-
-              /**
-               * SortableJS の共通オプションを取得する
-               * @param {string} handleSelector - ドラッグハンドルのセレクタ
-               * @private
-               */
-              _getCommonSortableOptions(handleSelector) {
-                return {
-                  animation: 150,
-                  handle: handleSelector,
-                  fallbackOnBody: true,
-                  swapThreshold: 0.65,
-                  preventOnFilter: false
-                };
-              }
-              // ---------------------------------------------------------------
-
-
-              /**
-               * ドラッグ終了時の共通処理
-               * @param {Object} evt - SortableJS のイベントオブジェクト
-               * @param {'sidebar'|'preview'} mode - どちらのエリアでの操作か
-               * @private
-               */
-              _onDragEnd(evt, mode) {
-                const { item, from, to, newIndex } = evt;
-                const isPreview = mode === 'preview';
-                
-                // ID取得用の属性名
-                const idAttr = isPreview ? this.ctx.CONFIG.ATTRIBUTES.TREE_ID : 'data-id';
-                const previewRoot = isPreview ? document.querySelector(this.ctx.CONFIG.SELECTORS.CONTAINER_INNER) : null;
-
-                // ターゲットIDの取得
-                const targetId = item.getAttribute(idAttr);
-
-                // 親IDの判定ロジック（プレビューとツリーで共通化）
-                const getParentId = (container) => {
-                  if (isPreview) {
-                    return (container === previewRoot) ? null : container.closest(`[${idAttr}]`)?.getAttribute(idAttr);
-                  } else {
-                    return container.classList.contains('root-sortable-list') ? null : container.closest('.tree-item')?.getAttribute('data-id');
-                  }
-                };
-
-                const toId = getParentId(to);
-                const fromId = getParentId(from);
-
-                // データの移動と同期
-                this.moveTreeNode(targetId, fromId, toId, newIndex);
-                this.syncView();
-              }
-              // ---------------------------------------------------------------
-          
-      // ---------------------------------------------------------------
-
-  // ---------------------------------------------------------------
-
-
+  /* ================================================================================================
+    Preview Render（JSON→DOM）
+  ================================================================================================ */
 
   /**
    * JSONデータ（ツリー構造）から実際のDOM要素を再帰的に生成するメインメソッド
@@ -729,65 +405,331 @@ export class WebModuleBuilder {
 
 
 
-  addPage(title = null) {
-    const id = "page-" + Math.random().toString(36).slice(2, 9);
-    const t = (title && title.trim()) ? title.trim() : `ページ${this.project.pages.length + 1}`;
 
-    this.project.pages.push({ id, title: t, tree: [] });
-    this.project.activePageId = id;
 
-    // UI更新（selectの中身を更新したいので）
-    this.renderToolbar();
-    this.syncView();
+  /* ================================================================================================
+    Sidebar Render（ツリー表示）
+  ================================================================================================ */
+
+  /**
+   * サイドバーのツリー構造を生成・描画し、各種ボタンやSortableを初期化する
+   * @param {Object[]} tree - 表示対象のツリーデータ
+   */
+  renderSidebar(tree) {
+    const displayInner = document.querySelector(this.ctx.CONFIG.SELECTORS.TREE_DISPLAY_INNER);
+    if (!displayInner) return;
+
+    // 1. 基本構造の描画
+    displayInner.innerHTML = "";
+    
+    displayInner.appendChild(this.ui.createAddControls(this, null));
+
+    const treeHtml = `<ul class="sortable-list root-sortable-list">${this._buildTreeHtml(this.tree)}</ul>`;
+    displayInner.insertAdjacentHTML("beforeend", treeHtml);
+
+    // 2. 各ノードへの動的部品（ボタン等）のマウント
+    this._mountTreeControls(displayInner, this.tree);
+
+    // 3. インタラクション（並び替え・ホバー）の初期化
+    displayInner.querySelectorAll("ul.sortable-list").forEach(ul => this._initSortable(ul));
+    this._bindHoverEvents(displayInner);
   }
   // ---------------------------------------------------------------
 
 
-  deletePage(pageId) {
-    const pages = this.project.pages;
-    if (!Array.isArray(pages) || pages.length <= 1) {
-      alert("最後の1ページは削除できません。");
-      return;
+          /**
+           * ツリーデータから再帰的にHTML文字列を生成する
+           * @private
+           */
+          _buildTreeHtml(nodes) {
+            return nodes.map(node => {
+              const id = this.ui.escapeHtml(node.id);
+              const isStrBox = node.type === 'structure-box';
+              const def = this.ctx.ELEMENT_DEFS[node.type];
+              
+              return `
+                <li data-id="${id}" class="tree-item">
+                  <div class="parent${isStrBox ? " no-drag structure-row" : ""}" data-row-id="${id}">
+                    ${!isStrBox ? `<span class="drag-handle">≡</span>` : ""}
+                    <span class="label-text">${isStrBox ? `[${this.ui.escapeHtml(node.label)}]` : this.ui.escapeHtml(node.label)}</span>
+                    <div class="row-controls">
+                      <div class="manage-controls" data-manage-for="${id}">
+                        <div class="add-controls" data-add-for="${id}"></div>
+                      </div>
+                    </div>
+                  </div>
+                  <ul class="sortable-list">
+                    ${node.children ? this._buildTreeHtml(node.children) : ""}
+                  </ul>
+                  ${/* 特殊コンテナへの枠追加用スロット */
+                    (!isStrBox && def?.template.includes(this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE)) 
+                    ? `<div data-blockadd-for="${id}"></div>` : ""
+                  }
+                </li>`.trim();
+            }).join("");
+          }
+          // ---------------------------------------------------------------
+
+
+          /**
+           * 生成されたHTML要素に対して、JSで生成したボタン類を流し込む
+           * @private
+           */
+          _mountTreeControls(container, tree) {
+            // 編集・削除・追加ボタンのマウント
+            container.querySelectorAll('.tree-item').forEach(li => {
+              const id = li.getAttribute('data-id');
+              const node = this.logic.findNodeById(tree, id);
+              if (!node) return;
+
+              const mSlot = li.querySelector(`[data-manage-for="${id}"]`);
+              if (mSlot) {
+                if (node.type !== 'structure-box') mSlot.prepend(this.ui.createEditButton(node));
+                mSlot.appendChild(this.ui.createDeleteButton(node));
+              }
+
+              const addSlot = li.querySelector(`[data-add-for="${id}"]`);
+              if (!addSlot) return;
+
+              // ✅ data-drop-zoneに当たる「箱（structure-box）」にだけ📦を出す
+              if (node.type === 'structure-box') {
+                addSlot.appendChild(this.ui.createAddControls(this, node.id));
+              } else {
+                addSlot.innerHTML = ""; // 親（グリッドセット等）では何も出さない
+              }
+            });
+
+            // 「+ 枠を追加」ボタンの特殊処理
+            container.querySelectorAll("[data-blockadd-for]").forEach(slot => {
+              this._setupBlockAddButton(slot, tree);
+            });
+          }
+          // ---------------------------------------------------------------
+
+                  /**
+                   * 構造体（グリッド等）専用の「枠を追加」ボタンをセットアップする
+                   * @private
+                   */
+                  _setupBlockAddButton(slot, tree) {
+                    const id = slot.getAttribute("data-blockadd-for");
+                    const node = this.logic.findNodeById(tree, id);
+                    if (!node) return;
+
+                    const def = this.ctx.ELEMENT_DEFS[node.type];
+                    const tempDiv = document.createElement('div');
+                    tempDiv.innerHTML = def.template;
+                    const dz = tempDiv.querySelector(`[${this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE}]`);
+                    const label = dz ? dz.getAttribute(this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE) : "枠";
+
+                    const btnWrapper = this.ui.parseHtml(`
+                      <div class="tree-block-add-wrap">
+                        <button type="button" class="blockAddBtn">+ ${label}を追加</button>
+                      </div>
+                    `);
+
+                    btnWrapper.querySelector('button').onclick = (e) => {
+                      e.stopPropagation();
+                      this.addStructure(node); // さきほど整理した addStructure を呼び出し
+                    };
+                    slot.replaceWith(btnWrapper);
+                  }
+                  // ---------------------------------------------------------------
+
+          
+          /**
+           * サイドバーの各行とプレビューDOM間のホバー（強調表示）イベントをバインドする
+           * @param {HTMLElement} parent - イベントを監視するサイドバーの親コンテナ
+           */
+          _bindHoverEvents(parent) {
+            if (parent._hoverBound) return;
+            parent._hoverBound = true;
+
+            const getRowId = (e) => e.target.closest("[data-row-id]")?.getAttribute("data-row-id");
+
+            parent.addEventListener("mouseover", (e) => {
+              const id = getRowId(e);
+              if (id) this._toggleHighlight(id, true);
+            });
+
+            parent.addEventListener("mouseout", (e) => {
+              const id = getRowId(e);
+              if (id) this._toggleHighlight(id, false);
+            });
+          }
+          // ---------------------------------------------------------------
+
+                  /**
+                   * 指定したIDの要素（プレビュー側とサイドバー側両方）のホバー状態を同期する
+                   * @param {string} id - 対象のノードID
+                   * @param {boolean} isActive - ホバー中かどうか
+                   * @private
+                   */
+                  _toggleHighlight(id, isActive) {
+                    const attr = "data-tree-hover";
+
+                    // 1. プレビュー側の要素を操作
+                    const previewEl = document.querySelector(`[${this.ctx.CONFIG.ATTRIBUTES.TREE_ID}="${id}"]`);
+                    if (previewEl) {
+                      // クラスは使わず、属性だけで状態を管理
+                      previewEl.setAttribute(attr, isActive ? 'true' : 'false');
+                    }
+
+                    // 2. サイドバー側の行（ツリーアイテム）を操作
+                    const sidebarRow = document.querySelector(`[data-row-id="${id}"]`);
+                    if (sidebarRow) {
+                      // サイドバー側も属性で管理するように変更
+                      sidebarRow.setAttribute(attr, isActive ? 'true' : 'false');
+                    }
+                  }
+                  // ---------------------------------------------------------------
+
+          // ---------------------------------------------------------------
+
+  // ---------------------------------------------------------------
+
+
+
+
+
+
+  /* ================================================================================================
+    DnD（Sortable/Drag）
+  ================================================================================================ */
+
+  /**
+   * サイドバーのツリー表示用 Sortable を初期化する
+   * @param {HTMLElement} ul - 対象のリスト要素
+   * @private
+   */
+  _initSortable(ul) {
+    // ✅ 重複バインド防止（プレビュー側と同じ方針）
+    if (ul._sortableInstance) {
+      ul._sortableInstance.destroy();
+      ul._sortableInstance = null;
     }
 
-    const idx = pages.findIndex(p => p.id === pageId);
-    if (idx === -1) return;
+    ul._sortableInstance = new Sortable(ul, {
+      ...this._getCommonSortableOptions('.drag-handle'),
+      group: {
+        name: 'nested',
+        pull: true,
+        put: (to) => this._canPutInTree(to)
+      },
+      filter: '.moduleAddBtn, .editBtn, .deleteBtn, .blockAddBtn',
+      onEnd: (evt) => this._onDragEnd(evt, 'sidebar')
+    });
+  }
+  // ---------------------------------------------------------------
 
-    const pageTitle = pages[idx].title || "ページ";
-    const ok = confirm(`「${pageTitle}」を削除します。よろしいですか？`);
-    if (!ok) return;
+          /**
+           * サイドバー側でのドロップ許可判定
+           * @private
+           */
+          _canPutInTree(to) {
+            // ルートリストならOK
+            if (to.el.classList.contains('root-sortable-list')) return true;
 
-    const deletingActive = (this.project.activePageId === pageId);
+            // 子要素（枠）なら structure-box の場合のみOK
+            const parentLi = to.el.closest('.tree-item');
+            if (parentLi) {
+              const id = parentLi.getAttribute('data-id');
+              const node = this.logic.findNodeById(this.tree, id);
+              return !!(node && node.type === 'structure-box');
+            }
 
-    // 削除
-    pages.splice(idx, 1);
+            return false;
+          }
+          // ---------------------------------------------------------------
 
-    // アクティブを調整（削除したのがactiveなら近いページへ）
-    if (deletingActive) {
-      const next = pages[idx] || pages[idx - 1] || pages[0];
-      this.project.activePageId = next.id;
-    }
+  /**
+   * プレビューDOMに対して Sortable を初期化する
+   *
+   * プレビュー操作モード時のみ有効。
+   * syncView 後のDOM再構築に伴い再初期化される。
+   *
+   * @private
+   */
+  _initPreviewSortable() {
+    if (!this.isPreviewDragEnabled()) return;
 
-    // UI更新
-    this.renderToolbar();
-    this.syncView();
-    this.saveToLocalStorage();
+    const previewRoot = document.querySelector(this.ctx.CONFIG.SELECTORS.CONTAINER_INNER);
+    if (!previewRoot) return;
+
+    const containers = [previewRoot, ...Array.from(document.querySelectorAll(`[${this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE}]`))];
+
+    containers.forEach(container => {
+      // 重複バインド防止
+      if (container._sortableInstance) container._sortableInstance.destroy();
+
+      container._sortableInstance = new Sortable(container, {
+        ...this._getCommonSortableOptions('.preview-drag-handle'),
+        group: { name: 'preview-nested', pull: true, put: true },
+        invertSwap: true,
+        onEnd: (evt) => this._onDragEnd(evt, 'preview')
+      });
+    });
+  }
+  // ---------------------------------------------------------------
+
+  /**
+   * SortableJS の共通オプションを取得する
+   * @param {string} handleSelector - ドラッグハンドルのセレクタ
+   * @private
+   */
+  _getCommonSortableOptions(handleSelector) {
+    return {
+      animation: 150,
+      handle: handleSelector,
+      fallbackOnBody: true,
+      swapThreshold: 0.65,
+      preventOnFilter: false
+    };
   }
   // ---------------------------------------------------------------
 
 
-  setActivePage(pageId) {
-    if (!this.project.pages.some(p => p.id === pageId)) return;
+  /**
+   * ドラッグ終了時の共通処理
+   * @param {Object} evt - SortableJS のイベントオブジェクト
+   * @param {'sidebar'|'preview'} mode - どちらのエリアでの操作か
+   * @private
+   */
+  _onDragEnd(evt, mode) {
+    const { item, from, to, newIndex } = evt;
+    const isPreview = mode === 'preview';
+    
+    // ID取得用の属性名
+    const idAttr = isPreview ? this.ctx.CONFIG.ATTRIBUTES.TREE_ID : 'data-id';
+    const previewRoot = isPreview ? document.querySelector(this.ctx.CONFIG.SELECTORS.CONTAINER_INNER) : null;
 
-    this.project.activePageId = pageId;
+    // ターゲットIDの取得
+    const targetId = item.getAttribute(idAttr);
 
-    // UI更新（select表示更新）
-    this.renderToolbar();
+    // 親IDの判定ロジック（プレビューとツリーで共通化）
+    const getParentId = (container) => {
+      if (isPreview) {
+        return (container === previewRoot) ? null : container.closest(`[${idAttr}]`)?.getAttribute(idAttr);
+      } else {
+        return container.classList.contains('root-sortable-list') ? null : container.closest('.tree-item')?.getAttribute('data-id');
+      }
+    };
+
+    const toId = getParentId(to);
+    const fromId = getParentId(from);
+
+    // データの移動と同期
+    this.moveTreeNode(targetId, fromId, toId, newIndex);
     this.syncView();
   }
   // ---------------------------------------------------------------
 
 
+
+
+
+  /* ================================================================================================
+    Node Factory Layer（生成の正）
+  ================================================================================================ */
 
 
   /**
@@ -800,7 +742,251 @@ export class WebModuleBuilder {
   }
   // ---------------------------------------------------------------
 
+          /**
+           * NodeFactory層: 指定defIdの初期ノードを生成する
+           * @param {string} defId
+           * @returns {Object|null}
+           * @private
+           */
+          _nfCreateModule(defId) {
+            const def = this.ctx.ELEMENT_DEFS[defId];
+            if (!def) return null;
 
+            // 1. 動的な初期ラベルの決定
+            const initialLabel = this._nfExtractInitialLabel(def);
+
+            // 2. ベースとなるノードの構築
+            const newNode = {
+              id: this._nfGenerateUniqueId(),
+              type: defId,
+              label: initialLabel,
+              children: [],
+              isStructure: def.template.includes(this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE)
+            };
+
+            // 3. コンテナ（DROP_ZONE）を持つ場合の構造体生成
+            this._nfAttachInitialStructure(newNode, def);
+
+            return newNode;
+          }
+          // ---------------------------------------------------------------
+
+                  /**
+                   * NodeFactory層: テンプレートから最適な初期ラベルを抽出する
+                   * @param {Object} def - モジュール定義
+                   * @returns {string}
+                   * @private
+                   */
+                  _nfExtractInitialLabel(def) {
+                    const temp = document.createElement('div');
+                    temp.innerHTML = def.template;
+                    const treeViewEl = temp.querySelector('[data-tree-view]');
+
+                    if (treeViewEl) {
+                      const editConf = treeViewEl.getAttribute('data-edit');
+                      if (editConf && editConf.includes('html:')) {
+                        const configPart = editConf.split(';').find(c => c.trim().startsWith('html:'));
+                        if (configPart) {
+                          const parts = configPart.split(':');
+                          return parts.slice(2).join(':') || def.label;
+                        }
+                      }
+                    }
+                    return def.label;
+                  }
+                  // ---------------------------------------------------------------
+
+
+          /**
+           * NodeFactory層: DropZoneを持つモジュールに初期structure-boxを付与する
+           * @param {Object} newNode
+           * @param {Object} def
+           * @private
+           */
+          _nfAttachInitialStructure(newNode, def) {
+            const dzEl = this._nfGetDropZoneElementFromTemplate(def?.template || "");
+                
+            if (dzEl) {
+              const dzNode = {
+                id: this._nfGenerateUniqueId(),
+                type: 'structure-box',
+                label: dzEl.getAttribute(this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE) || "枠",
+                isStructure: true,
+                // 必要に応じて初期状態で中に配置するモジュールを設定
+                children: []
+              };
+              const childDefId = this._nfResolveDefaultChildDefId(def);
+              const child = this.createInitialData(childDefId);
+              if (child) dzNode.children.push(child);
+
+                newNode.children.push(dzNode);
+            }
+          }
+          // ---------------------------------------------------------------
+
+                  /**
+                   * テンプレHTMLから DropZone 要素を取得する
+                   * @param {string} template
+                   * @returns {Element|null}
+                   * @private
+                   */
+                  _nfGetDropZoneElementFromTemplate(template) {
+                    if (!template) return null;
+                    const tempDiv = document.createElement('div');
+                    tempDiv.innerHTML = template;
+                    return tempDiv.querySelector(`[${this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE}]`);
+                  }
+                  // ---------------------------------------------------------------
+
+
+                  /**
+                   * DropZoneの初期子モジュールIDを解決する
+                   * - def.default があればそれを採用
+                   * - なければ m-text01 にフォールバック
+                   * @param {Object|null|undefined} def
+                   * @returns {string}
+                   * @private
+                   */
+                  _nfResolveDefaultChildDefId(def) {
+                    return def?.default || 'm-text01';
+                  }
+                  // ---------------------------------------------------------------
+
+                  /**
+                   * NodeFactory層: 衝突しにくいユニークIDを生成する
+                   * - crypto.randomUUID が使える環境ではそれを優先
+                   * - 使えない場合は Date.now()+counter にフォールバック
+                   * @returns {string}
+                   * @private
+                   */
+                  _nfGenerateUniqueId() {
+                    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+                      return `id-${crypto.randomUUID()}`;
+                    }
+                    this._idCounter = (this._idCounter || 0) + 1;
+                    return `id-${Date.now()}-${this._idCounter}`;
+                  }
+                  // ---------------------------------------------------------------
+
+                  /**
+                   * 親ノード定義から、枠（structure-box）のラベルを取得する
+                   * @param {Object|null|undefined} def
+                   * @returns {string}
+                   * @private
+                   */
+                  _nfGetDropZoneLabelFromDef(def) {
+                    const dzEl = this._nfGetDropZoneElementFromTemplate(def?.template || "");
+                    if (!dzEl) return "枠";
+                    return dzEl.getAttribute(this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE) || "枠";
+                  }
+                  // ---------------------------------------------------------------
+
+
+  /**
+   * 指定したレイアウトノード内に新しい構造枠（structure-box）を追加する
+   *
+   * 主にグリッド・リストなどのコンテナ系モジュールから呼ばれる。
+   *
+   * @param {Object} node - 親となるレイアウトノード
+   */
+  addStructure(node) {
+    const parentNode = this.logic.findNodeById(this.tree, node.id);
+    if (!parentNode) return;
+
+    const newFrameNode = this._nfCreateStructureBox(parentNode);
+
+    if (!Array.isArray(parentNode.children)) parentNode.children = [];
+    parentNode.children.push(newFrameNode);
+
+    this.syncView();
+  }
+
+  // ---------------------------------------------------------------
+
+          /**
+           * NodeFactory層: 親ノードから structure-box を生成する
+           * @param {Object} parentNode
+           * @returns {Object}
+           * @private
+           */
+          _nfCreateStructureBox(parentNode) {
+            const def = this.ctx.ELEMENT_DEFS[parentNode.type];
+
+            const newFrame = {
+              id: this._nfGenerateUniqueId(),
+              type: 'structure-box',
+              label: this._nfGetDropZoneLabelFromDef(def),
+              isStructure: true,
+              children: []
+            };
+
+            const childDefId = this._nfResolveDefaultChildDefId(def);
+            const child = this.createInitialData(childDefId);
+            if (child) newFrame.children.push(child);
+
+            return newFrame;
+          }
+          // ---------------------------------------------------------------
+
+
+
+  /* ================================================================================================
+
+
+
+
+
+
+
+  /* ================================================================================================
+    Tree操作（Undo/Move/Delete/Insert）
+  ================================================================================================ */
+
+
+  /**
+   * 現在のツリー状態のスナップショットを履歴スタックへ保存する
+   *
+   * Undo機能用の状態管理。
+   * メモリ増加を防ぐため、履歴件数は最大 MAX 件に制限される。
+   *
+   * @param {Object[]} snapshot - 保存するツリーデータのディープコピー
+   *
+   * @example
+   * this.pushHistory(JSON.parse(JSON.stringify(this.tree)));
+   */
+  pushHistory(snapshot) {
+    const MAX = 50;
+
+    this.state.history.push(snapshot);
+
+    if (this.state.history.length > MAX) {
+      this.state.history.shift();
+    }
+  }
+  // ---------------------------------------------------------------
+
+
+  /**
+   * キーボード操作（Undoなど）を管理する
+   * @param {Event} e - キーボードイベント
+   */
+  // ---------------------------------------------------------------
+  handleKeyDown(e) {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !['INPUT', 'TEXTAREA'].includes(e.target.tagName)) {
+
+      if (this.history.length > 1) {
+        this.history.pop();
+
+        const prevSnapshot = this.history[this.history.length - 1];
+
+        // tree復元
+        this.tree = JSON.parse(JSON.stringify(prevSnapshot));
+
+        this.syncView();
+      }
+    }
+  }
+  // ---------------------------------------------------------------
 
 
 
@@ -822,7 +1008,6 @@ export class WebModuleBuilder {
   }
   // ---------------------------------------------------------------
 
-
       /**
        * 削除の確認ダイアログを表示する
        * @returns {boolean} ユーザーが同意した場合は true
@@ -832,7 +1017,6 @@ export class WebModuleBuilder {
         return confirm("このモジュールを削除しますか？内部の子要素もすべて削除されます。");
       }
       // ---------------------------------------------------------------
-
 
       /**
        * ツリー構造（配列）から指定したIDを持つ要素を再帰的に探し出し、削除する
@@ -861,69 +1045,285 @@ export class WebModuleBuilder {
       }
       // ---------------------------------------------------------------
 
-
   // ---------------------------------------------------------------
 
+  moveTreeNode(targetId, fromId, toId, newIndex) {
+    // 1. 移動対象をツリーから探し出し、一旦取り出す
+    const movedNode = this._extractNodeById(this.tree, targetId);
 
+    if (!movedNode) {
+      console.warn(`Node not found: ${targetId}`);
+      return;
+    }
 
-  /**
-   * 指定したレイアウトノード内に新しい構造枠（structure-box）を追加する
-   *
-   * 主にグリッド・リストなどのコンテナ系モジュールから呼ばれる。
-   *
-   * @param {Object} node - 親となるレイアウトノード
-   */
-  addStructure(node) {
-    const parentNode = this.logic.findNodeById(this.tree, node.id);
-    if (!parentNode) return;
-
-    const newFrameNode = this._nfCreateStructureBox(parentNode);
-
-    if (!Array.isArray(parentNode.children)) parentNode.children = [];
-    parentNode.children.push(newFrameNode);
-
-    this.syncView();
+    // 2. 指定された移動先の親ノード（またはルート）に挿入する
+    this._insertNodeAt(this.tree, toId, newIndex, movedNode);
   }
 
-
-
-
   // ---------------------------------------------------------------
 
 
+      /**
+       * ツリー内を再帰的に探索し、対象ノードを削除してそのデータを返す
+       * @param {Object[]} list - 探索対象の配列
+       * @param {string} targetId - 取り出したいノードのID
+       * @returns {Object|null} 取り出したノードデータ、見つからない場合はnull
+       * @private
+       */
+      _extractNodeById(list, targetId) {
+        for (let i = 0; i < list.length; i++) {
+          if (list[i].id === targetId) {
+            // 対象が見つかったので配列から削除して返す
+            return list.splice(i, 1)[0];
+          }
+          if (list[i].children && list[i].children.length > 0) {
+            const found = this._extractNodeById(list[i].children, targetId);
+            if (found) return found;
+          }
+        }
+        return null;
+      }
+      // ---------------------------------------------------------------
 
+      /**
+       * 指定した親ノードの children 配列、またはルート配列にノードを挿入する
+       * @param {Object[]} list - 探索対象の配列
+       * @param {string|null} parentId - 挿入先の親ID（ルートならnull）
+       * @param {number} index - 挿入するインデックス
+       * @param {Object} nodeToInsert - 挿入するノードデータ
+       * @returns {boolean} 挿入に成功したか
+       * @private
+       */
+      _insertNodeAt(list, parentId, index, nodeToInsert) {
+        // ルートへの挿入
+        if (!parentId) {
+          list.splice(index, 0, nodeToInsert);
+          return true;
+        }
 
-
-
-  
-
-
+        // 特定の親ノードを再帰的に探す
+        for (let node of list) {
+          if (node.id === parentId) {
+            if (!Array.isArray(node.children)) node.children = [];
+            node.children.splice(index, 0, nodeToInsert);
+            return true;
+          }
+          if (node.children && node.children.length > 0) {
+            if (this._insertNodeAt(node.children, parentId, index, nodeToInsert)) {
+              return true;
+            }
+          }
+        }
+        return false;
+      }
+      // ---------------------------------------------------------------
 
   /**
-   * キーボード操作（Undoなど）を管理する
-   * @param {Event} e - キーボードイベント
+   * 新しいモジュールを生成し、指定した親ID（またはルート）の末尾に追加する
+   * @param {string} defId - モジュール定義のID (例: 'm-text01')
+   * @param {string|null} [parentId=null] - 追加先の親ノードID。nullの場合はルートへ。
    */
+  addModule(defId, parentId = null) {
+    // 1. ノードの初期データを生成（既存の整理済みメソッドを使用）
+    const newNode = this.createInitialData(defId);
+    if (!newNode) return;
+
+    // 2. 指定された場所にデータを挿入（内部ロジックを分離）
+    this._attachNodeToTarget(newNode, parentId);
+
+    // 3. 同期と保存
+    this.syncView();
+  }
   // ---------------------------------------------------------------
-  handleKeyDown(e) {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !['INPUT', 'TEXTAREA'].includes(e.target.tagName)) {
 
-      if (this.history.length > 1) {
-        this.history.pop();
+      /**
+       * 生成されたノードを、IDを元にツリー内の適切な場所に接続する
+       * @param {Object} newNode - 追加するノードデータ
+       * @param {string|null} parentId - ターゲットとなる親のID
+       * @private
+       */
+      _attachNodeToTarget(newNode, parentId) {
+        if (!parentId) {
+          // 親IDがない場合はルート配列に追加
+          this.tree.push(newNode);
+          return;
+        }
 
-        const prevSnapshot = this.history[this.history.length - 1];
-
-        // tree復元
-        this.tree = JSON.parse(JSON.stringify(prevSnapshot));
-
-        this.syncView();
+        // 親IDがある場合はツリー内を検索して追加
+        const parentNode = this.logic.findNodeById(this.tree, parentId);
+        if (parentNode) {
+          if (!Array.isArray(parentNode.children)) parentNode.children = [];
+          parentNode.children.push(newNode);
+        } else {
+          console.warn(`Target parent node not found: ${parentId}`);
+        }
       }
+      // ---------------------------------------------------------------
+
+  // ---------------------------------------------------------------
+
+
+
+  /* ================================================================================================
+    BottomSheet（単一選択→追加
+  ================================================================================================ */
+
+  /**
+   * ボトムシートの初期化とイベント登録
+   */
+  initBottomSheet() {
+    let sheet = document.getElementById('module-bottom-sheet');
+    if (!sheet) {
+      sheet = this.ui.createModuleBottomSheet();
+      document.body.appendChild(sheet);
+      
+      // イベントバインド
+      sheet.querySelector('.close-sheet').onclick = () => this.closeModuleSheet();
+      sheet.querySelector('.sheet-overlay').onclick = () => this.closeModuleSheet();
+      sheet.querySelector('#bulk-add-confirm-btn').onclick = () => this.executeBulkAdd();
+    }
+  }
+  // ---------------------------------------------------------------
+
+  /**
+   * ボトムシートを開く
+   */
+  openModuleSheet() {
+    let sheet = document.getElementById('module-bottom-sheet');
+    if (!sheet) {
+      sheet = this.ui.createModuleBottomSheet();
+      document.body.appendChild(sheet);
+      this._bindSheetEvents(sheet);
+    }
+
+    // ✅ 単一選択なので、常にここでクリア
+    this.sheetSelectedKey = null;
+
+    this._renderSheetGrid();
+
+    sheet.classList.remove('is-hidden');
+    setTimeout(() => sheet.classList.add('is-active'), 10);
+
+    this._updateSheetFooter();
+  }
+  // ---------------------------------------------------------------
+
+      /**
+       * シート内のグリッドを描画する（WebModuleUIのパーツを使用）
+       */
+      _renderSheetGrid() {
+        const grid = document.getElementById('sheet-module-grid');
+        if (!grid) return;
+        grid.innerHTML = "";
+
+        Object.entries(this.ctx.ELEMENT_DEFS).forEach(([key, def]) => {
+          const itemEl = this.ui.createSheetItem(key, def);
+
+          // 初期表示（未選択 or 選択中）
+          const badge = itemEl.querySelector('.item-badge');
+          const isSelected = (this.sheetSelectedKey === key);
+          itemEl.classList.toggle('is-selected', isSelected);
+          if (badge) badge.textContent = isSelected ? "✓" : "";
+
+          itemEl.onclick = () => {
+            const k = itemEl.dataset.key;
+
+            // クリックしたのが既に選択中なら解除、違うならそれに切替
+            this.sheetSelectedKey = (this.sheetSelectedKey === k) ? null : k;
+
+            // ✅ 単一選択なので、全要素を正しい状態に更新
+            grid.querySelectorAll('.sheet-item').forEach(el => {
+              const selected = (el.dataset.key === this.sheetSelectedKey);
+              el.classList.toggle('is-selected', selected);
+              const b = el.querySelector('.item-badge');
+              if (b) b.textContent = selected ? "✓" : "";
+            });
+
+            this._updateSheetFooter();
+          };
+
+          grid.appendChild(itemEl);
+        });
+      }
+      // ---------------------------------------------------------------
+
+      /**
+       * シート内の「追加ボタン」などの状態更新
+       */
+      _updateSheetFooter() {
+        const count = this.sheetSelectedKey ? 1 : 0;
+
+        const countEl = document.getElementById('selected-count');
+        if (countEl) countEl.textContent = String(count);
+
+        const btn = document.getElementById('bulk-add-confirm-btn');
+        if (btn) btn.disabled = (count === 0);
+      }
+      // ---------------------------------------------------------------
+
+      /**
+       * ボトムシートのイベント紐付け（初回のみ）
+       */
+      _bindSheetEvents(sheet) {
+        sheet.querySelector('.close-sheet').onclick = () => this.closeModuleSheet();
+        sheet.querySelector('.sheet-overlay').onclick = () => this.closeModuleSheet();
+        sheet.querySelector('#bulk-add-confirm-btn').onclick = () => this.executeBulkAdd();
+      }
+      // ---------------------------------------------------------------
+
+  /**
+   * 選択したモジュールを一括でデータに追加
+   */
+  executeBulkAdd() {
+    const key = this.sheetSelectedKey;   // ✅ 単一選択のキー
+    if (!key) return;
+
+    const newNode = this.createInitialData(key);
+    if (!newNode) return;
+
+    const targetParentId = this.pendingAddParentId;
+
+    if (targetParentId) {
+      const parentNode = this.logic.findNodeById(this.tree, targetParentId);
+      if (parentNode) {
+        if (!Array.isArray(parentNode.children)) parentNode.children = [];
+        parentNode.children.push(newNode);
+      } else {
+        console.warn(`Target parent node not found: ${targetParentId}`);
+      }
+    } else {
+      this.tree.push(newNode);
+    }
+
+    // ✅ 後処理（選択解除して閉じる）
+    this.pendingAddParentId = null;
+    this.sheetSelectedKey = null;
+
+    this.syncView();
+    this.saveToLocalStorage();
+    this.closeModuleSheet();
+  }
+  // ---------------------------------------------------------------
+
+  /**
+   * ボトムシートを閉じる
+   */
+  closeModuleSheet() {
+    const sheet = document.getElementById('module-bottom-sheet');
+    if (sheet) {
+      sheet.classList.remove('is-active');
+      setTimeout(() => sheet.classList.add('is-hidden'), 300);
     }
   }
   // ---------------------------------------------------------------
 
 
 
-  
+
+
+  /* ================================================================================================
+    EditPanel（編集UI一式）
+  ================================================================================================ */
 
   /**
    * 編集パネルを開き、対象ノードのコンテンツ編集およびスタイル編集UIを構築する
@@ -962,8 +1362,6 @@ export class WebModuleBuilder {
   }
   // ---------------------------------------------------------------
 
-
-
       /**
        * モジュールの定義（schema）に基づき、テキストやリンクなどの編集フィールドを生成する
        * @private
@@ -997,8 +1395,6 @@ export class WebModuleBuilder {
       }
       // ---------------------------------------------------------------
 
-
-
       /**
        * プレビューDOMをスキャンし、スタイル変更可能なターゲットごとにセクションを生成する
        * @private
@@ -1017,8 +1413,6 @@ export class WebModuleBuilder {
         });
       }
       // ---------------------------------------------------------------
-
-
 
       /**
        * 指定された要素内の編集可能なクラス要素をスキャンしてリスト化する
@@ -1042,8 +1436,6 @@ export class WebModuleBuilder {
         return targets;
       }
       // ---------------------------------------------------------------
-
-
 
       /**
        * 各ターゲット（.wrapper等）ごとのスタイル追加UIおよび既存プロパティを構築する
@@ -1086,10 +1478,6 @@ export class WebModuleBuilder {
       // ---------------------------------------------------------------
 
   // ---------------------------------------------------------------
-
-
-
-
 
   /**
    * 指定されたタイプに応じて、ラベル付きの編集フィールド行を生成する
@@ -1134,7 +1522,6 @@ export class WebModuleBuilder {
   }
   // ---------------------------------------------------------------
 
-
       /** @private */
       _buildRadioField(key, options, currentVal, onChange) {
         const container = document.createDocumentFragment();
@@ -1155,7 +1542,6 @@ export class WebModuleBuilder {
         return container;
       }
       // ---------------------------------------------------------------
-
 
       /** @private */
       _buildCheckboxField(options, currentVal, onChange) {
@@ -1181,7 +1567,6 @@ export class WebModuleBuilder {
         return container;
       }
       // ---------------------------------------------------------------
-
 
       /** @private */
       _buildToggleField(options, currentVal, onChange) {
@@ -1209,7 +1594,6 @@ export class WebModuleBuilder {
       }
       // ---------------------------------------------------------------
 
-
       /** @private */
       _buildDefaultField(type, currentVal, onChange) {
         const isTextarea = type === 'textarea';
@@ -1221,15 +1605,7 @@ export class WebModuleBuilder {
       }
       // ---------------------------------------------------------------
 
-
   // ---------------------------------------------------------------
-
-
-
-
-  
-
-
 
 
   /**
@@ -1411,164 +1787,14 @@ export class WebModuleBuilder {
       }
       // ---------------------------------------------------------------
 
-
   // ---------------------------------------------------------------
 
 
 
 
-
-
-  
-
-
-
-
-  moveTreeNode(targetId, fromId, toId, newIndex) {
-    // 1. 移動対象をツリーから探し出し、一旦取り出す
-    const movedNode = this._extractNodeById(this.tree, targetId);
-
-    if (!movedNode) {
-      console.warn(`Node not found: ${targetId}`);
-      return;
-    }
-
-    // 2. 指定された移動先の親ノード（またはルート）に挿入する
-    this._insertNodeAt(this.tree, toId, newIndex, movedNode);
-  }
-
-  // ---------------------------------------------------------------
-
-
-      /**
-       * ツリー内を再帰的に探索し、対象ノードを削除してそのデータを返す
-       * @param {Object[]} list - 探索対象の配列
-       * @param {string} targetId - 取り出したいノードのID
-       * @returns {Object|null} 取り出したノードデータ、見つからない場合はnull
-       * @private
-       */
-      _extractNodeById(list, targetId) {
-        for (let i = 0; i < list.length; i++) {
-          if (list[i].id === targetId) {
-            // 対象が見つかったので配列から削除して返す
-            return list.splice(i, 1)[0];
-          }
-          if (list[i].children && list[i].children.length > 0) {
-            const found = this._extractNodeById(list[i].children, targetId);
-            if (found) return found;
-          }
-        }
-        return null;
-      }
-      // ---------------------------------------------------------------
-
-      
-
-      /**
-       * 指定した親ノードの children 配列、またはルート配列にノードを挿入する
-       * @param {Object[]} list - 探索対象の配列
-       * @param {string|null} parentId - 挿入先の親ID（ルートならnull）
-       * @param {number} index - 挿入するインデックス
-       * @param {Object} nodeToInsert - 挿入するノードデータ
-       * @returns {boolean} 挿入に成功したか
-       * @private
-       */
-      _insertNodeAt(list, parentId, index, nodeToInsert) {
-        // ルートへの挿入
-        if (!parentId) {
-          list.splice(index, 0, nodeToInsert);
-          return true;
-        }
-
-        // 特定の親ノードを再帰的に探す
-        for (let node of list) {
-          if (node.id === parentId) {
-            if (!Array.isArray(node.children)) node.children = [];
-            node.children.splice(index, 0, nodeToInsert);
-            return true;
-          }
-          if (node.children && node.children.length > 0) {
-            if (this._insertNodeAt(node.children, parentId, index, nodeToInsert)) {
-              return true;
-            }
-          }
-        }
-        return false;
-      }
-      // ---------------------------------------------------------------
-
-  // ---------------------------------------------------------------
-
-
-
-
-
-  /**
-   * ボトムシートの初期化とイベント登録
-   */
-  initBottomSheet() {
-    let sheet = document.getElementById('module-bottom-sheet');
-    if (!sheet) {
-      sheet = this.ui.createModuleBottomSheet();
-      document.body.appendChild(sheet);
-      
-      // イベントバインド
-      sheet.querySelector('.close-sheet').onclick = () => this.closeModuleSheet();
-      sheet.querySelector('.sheet-overlay').onclick = () => this.closeModuleSheet();
-      sheet.querySelector('#bulk-add-confirm-btn').onclick = () => this.executeBulkAdd();
-    }
-  }
-  // ---------------------------------------------------------------
-
-
-
-
-
-  /**
-   * 新しいモジュールを生成し、指定した親ID（またはルート）の末尾に追加する
-   * @param {string} defId - モジュール定義のID (例: 'm-text01')
-   * @param {string|null} [parentId=null] - 追加先の親ノードID。nullの場合はルートへ。
-   */
-  addModule(defId, parentId = null) {
-    // 1. ノードの初期データを生成（既存の整理済みメソッドを使用）
-    const newNode = this.createInitialData(defId);
-    if (!newNode) return;
-
-    // 2. 指定された場所にデータを挿入（内部ロジックを分離）
-    this._attachNodeToTarget(newNode, parentId);
-
-    // 3. 同期と保存
-    this.syncView();
-  }
-  // ---------------------------------------------------------------
-
-
-      /**
-       * 生成されたノードを、IDを元にツリー内の適切な場所に接続する
-       * @param {Object} newNode - 追加するノードデータ
-       * @param {string|null} parentId - ターゲットとなる親のID
-       * @private
-       */
-      _attachNodeToTarget(newNode, parentId) {
-        if (!parentId) {
-          // 親IDがない場合はルート配列に追加
-          this.tree.push(newNode);
-          return;
-        }
-
-        // 親IDがある場合はツリー内を検索して追加
-        const parentNode = this.logic.findNodeById(this.tree, parentId);
-        if (parentNode) {
-          if (!Array.isArray(parentNode.children)) parentNode.children = [];
-          parentNode.children.push(newNode);
-        } else {
-          console.warn(`Target parent node not found: ${parentId}`);
-        }
-      }
-      // ---------------------------------------------------------------
-
-
-  // ---------------------------------------------------------------
+  /* ================================================================================================
+    Pages / Toolbar
+  ================================================================================================ */
 
 
   /**
@@ -1596,373 +1822,93 @@ export class WebModuleBuilder {
   }
   // ---------------------------------------------------------------
 
+  addPage(title = null) {
+    const id = "page-" + Math.random().toString(36).slice(2, 9);
+    const t = (title && title.trim()) ? title.trim() : `ページ${this.project.pages.length + 1}`;
 
+    this.project.pages.push({ id, title: t, tree: [] });
+    this.project.activePageId = id;
 
-  /**
-   * ボトムシートを開く
-   */
-  openModuleSheet() {
-    let sheet = document.getElementById('module-bottom-sheet');
-    if (!sheet) {
-      sheet = this.ui.createModuleBottomSheet();
-      document.body.appendChild(sheet);
-      this._bindSheetEvents(sheet);
-    }
-
-    // ✅ 単一選択なので、常にここでクリア
-    this.sheetSelectedKey = null;
-
-    this._renderSheetGrid();
-
-    sheet.classList.remove('is-hidden');
-    setTimeout(() => sheet.classList.add('is-active'), 10);
-
-    this._updateSheetFooter();
+    // UI更新（selectの中身を更新したいので）
+    this.renderToolbar();
+    this.syncView();
   }
   // ---------------------------------------------------------------
 
-      /**
-       * シート内のグリッドを描画する（WebModuleUIのパーツを使用）
-       */
-      _renderSheetGrid() {
-        const grid = document.getElementById('sheet-module-grid');
-        if (!grid) return;
-        grid.innerHTML = "";
 
-        Object.entries(this.ctx.ELEMENT_DEFS).forEach(([key, def]) => {
-          const itemEl = this.ui.createSheetItem(key, def);
-
-          // 初期表示（未選択 or 選択中）
-          const badge = itemEl.querySelector('.item-badge');
-          const isSelected = (this.sheetSelectedKey === key);
-          itemEl.classList.toggle('is-selected', isSelected);
-          if (badge) badge.textContent = isSelected ? "✓" : "";
-
-          itemEl.onclick = () => {
-            const k = itemEl.dataset.key;
-
-            // クリックしたのが既に選択中なら解除、違うならそれに切替
-            this.sheetSelectedKey = (this.sheetSelectedKey === k) ? null : k;
-
-            // ✅ 単一選択なので、全要素を正しい状態に更新
-            grid.querySelectorAll('.sheet-item').forEach(el => {
-              const selected = (el.dataset.key === this.sheetSelectedKey);
-              el.classList.toggle('is-selected', selected);
-              const b = el.querySelector('.item-badge');
-              if (b) b.textContent = selected ? "✓" : "";
-            });
-
-            this._updateSheetFooter();
-          };
-
-          grid.appendChild(itemEl);
-        });
-      }
-      // ---------------------------------------------------------------
-
-      /**
-       * シート内の「追加ボタン」などの状態更新
-       */
-      _updateSheetFooter() {
-        const count = this.sheetSelectedKey ? 1 : 0;
-
-        const countEl = document.getElementById('selected-count');
-        if (countEl) countEl.textContent = String(count);
-
-        const btn = document.getElementById('bulk-add-confirm-btn');
-        if (btn) btn.disabled = (count === 0);
-      }
-      // ---------------------------------------------------------------
-
-      /**
-       * ボトムシートのイベント紐付け（初回のみ）
-       */
-      _bindSheetEvents(sheet) {
-        sheet.querySelector('.close-sheet').onclick = () => this.closeModuleSheet();
-        sheet.querySelector('.sheet-overlay').onclick = () => this.closeModuleSheet();
-        sheet.querySelector('#bulk-add-confirm-btn').onclick = () => this.executeBulkAdd();
-      }
-      // ---------------------------------------------------------------
-
-  /**
-   * 選択したモジュールを一括でデータに追加
-   */
-  executeBulkAdd() {
-    const key = this.sheetSelectedKey;   // ✅ 単一選択のキー
-    if (!key) return;
-
-    const newNode = this.createInitialData(key);
-    if (!newNode) return;
-
-    const targetParentId = this.pendingAddParentId;
-
-    if (targetParentId) {
-      const parentNode = this.logic.findNodeById(this.tree, targetParentId);
-      if (parentNode) {
-        if (!Array.isArray(parentNode.children)) parentNode.children = [];
-        parentNode.children.push(newNode);
-      } else {
-        console.warn(`Target parent node not found: ${targetParentId}`);
-      }
-    } else {
-      this.tree.push(newNode);
+  deletePage(pageId) {
+    const pages = this.project.pages;
+    if (!Array.isArray(pages) || pages.length <= 1) {
+      alert("最後の1ページは削除できません。");
+      return;
     }
 
-    // ✅ 後処理（選択解除して閉じる）
-    this.pendingAddParentId = null;
-    this.sheetSelectedKey = null;
+    const idx = pages.findIndex(p => p.id === pageId);
+    if (idx === -1) return;
 
+    const pageTitle = pages[idx].title || "ページ";
+    const ok = confirm(`「${pageTitle}」を削除します。よろしいですか？`);
+    if (!ok) return;
+
+    const deletingActive = (this.project.activePageId === pageId);
+
+    // 削除
+    pages.splice(idx, 1);
+
+    // アクティブを調整（削除したのがactiveなら近いページへ）
+    if (deletingActive) {
+      const next = pages[idx] || pages[idx - 1] || pages[0];
+      this.project.activePageId = next.id;
+    }
+
+    // UI更新
+    this.renderToolbar();
     this.syncView();
     this.saveToLocalStorage();
-    this.closeModuleSheet();
+  }
+  // ---------------------------------------------------------------
+
+  setActivePage(pageId) {
+    if (!this.project.pages.some(p => p.id === pageId)) return;
+
+    this.project.activePageId = pageId;
+
+    // UI更新（select表示更新）
+    this.renderToolbar();
+    this.syncView();
   }
   // ---------------------------------------------------------------
 
   /**
-   * ボトムシートを閉じる
+   * プレビューのドラッグ有効・無効を切り替える
    */
-  closeModuleSheet() {
-    const sheet = document.getElementById('module-bottom-sheet');
-    if (sheet) {
-      sheet.classList.remove('is-active');
-      setTimeout(() => sheet.classList.add('is-hidden'), 300);
-    }
+  togglePreviewDrag(enabled) {
+    // ✅ stateを正にする
+    this.uiState.previewDragEnabled = enabled;
+
+    const container = document.querySelector(this.ctx.CONFIG.SELECTORS.CONTAINER_INNER);
+    if (container) container.classList.toggle('drag-enabled', enabled);
+
+    this.syncView();
+  }
+  // ---------------------------------------------------------------
+
+  /**
+   * プレビュー操作（ドラッグ）が有効かどうかを返す
+   * @returns {boolean}
+   */
+  isPreviewDragEnabled() {
+    return !!this.uiState.previewDragEnabled;
   }
   // ---------------------------------------------------------------
 
 
 
-
-
-
-
   /* ================================================================================================
-    Node Factory Layer
+    Export（I/O
   ================================================================================================ */
 
-  /**
-   * NodeFactory層: 指定defIdの初期ノードを生成する
-   * @param {string} defId
-   * @returns {Object|null}
-   * @private
-   */
-  _nfCreateModule(defId) {
-    const def = this.ctx.ELEMENT_DEFS[defId];
-    if (!def) return null;
-
-    // 1. 動的な初期ラベルの決定
-    const initialLabel = this._nfExtractInitialLabel(def);
-
-    // 2. ベースとなるノードの構築
-    const newNode = {
-      id: this._nfGenerateUniqueId(),
-      type: defId,
-      label: initialLabel,
-      children: [],
-      isStructure: def.template.includes(this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE)
-    };
-
-    // 3. コンテナ（DROP_ZONE）を持つ場合の構造体生成
-    this._nfAttachInitialStructure(newNode, def);
-
-    return newNode;
-  }
-
-
-
-  /**
-   * NodeFactory層: 親ノードから structure-box を生成する
-   * @param {Object} parentNode
-   * @returns {Object}
-   * @private
-   */
-  _nfCreateStructureBox(parentNode) {
-    const def = this.ctx.ELEMENT_DEFS[parentNode.type];
-
-    const newFrame = {
-      id: this._nfGenerateUniqueId(),
-      type: 'structure-box',
-      label: this._nfGetDropZoneLabelFromDef(def),
-      isStructure: true,
-      children: []
-    };
-
-    const childDefId = this._nfResolveDefaultChildDefId(def);
-    const child = this.createInitialData(childDefId);
-    if (child) newFrame.children.push(child);
-
-    return newFrame;
-  }
-
-
-  /**
-   * NodeFactory層: テンプレートから最適な初期ラベルを抽出する
-   * @param {Object} def - モジュール定義
-   * @returns {string}
-   * @private
-   */
-  _nfExtractInitialLabel(def) {
-    const temp = document.createElement('div');
-    temp.innerHTML = def.template;
-    const treeViewEl = temp.querySelector('[data-tree-view]');
-
-    if (treeViewEl) {
-      const editConf = treeViewEl.getAttribute('data-edit');
-      if (editConf && editConf.includes('html:')) {
-        const configPart = editConf.split(';').find(c => c.trim().startsWith('html:'));
-        if (configPart) {
-          const parts = configPart.split(':');
-          return parts.slice(2).join(':') || def.label;
-        }
-      }
-    }
-    return def.label;
-  }
-
-
-  /**
-   * NodeFactory層: 衝突しにくいユニークIDを生成する
-   * - crypto.randomUUID が使える環境ではそれを優先
-   * - 使えない場合は Date.now()+counter にフォールバック
-   * @returns {string}
-   * @private
-   */
-  _nfGenerateUniqueId() {
-    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-      return `id-${crypto.randomUUID()}`;
-    }
-    this._idCounter = (this._idCounter || 0) + 1;
-    return `id-${Date.now()}-${this._idCounter}`;
-  }
-
-  /**
-   * DropZoneの初期子モジュールIDを解決する
-   * - def.default があればそれを採用
-   * - なければ m-text01 にフォールバック
-   * @param {Object|null|undefined} def
-   * @returns {string}
-   * @private
-   */
-  _nfResolveDefaultChildDefId(def) {
-    return def?.default || 'm-text01';
-  }
-
-  /**
-   * 親ノード定義から、枠（structure-box）のラベルを取得する
-   * @param {Object|null|undefined} def
-   * @returns {string}
-   * @private
-   */
-  _nfGetDropZoneLabelFromDef(def) {
-    const dzEl = this._nfGetDropZoneElementFromTemplate(def?.template || "");
-    if (!dzEl) return "枠";
-    return dzEl.getAttribute(this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE) || "枠";
-  }
-
-  /**
-   * テンプレHTMLから DropZone 要素を取得する
-   * @param {string} template
-   * @returns {Element|null}
-   * @private
-   */
-  _nfGetDropZoneElementFromTemplate(template) {
-    if (!template) return null;
-    const tempDiv = document.createElement('div');
-    tempDiv.innerHTML = template;
-    return tempDiv.querySelector(`[${this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE}]`);
-  }
-
-
-  /**
-   * NodeFactory層: DropZoneを持つモジュールに初期structure-boxを付与する
-   * @param {Object} newNode
-   * @param {Object} def
-   * @private
-   */
-  _nfAttachInitialStructure(newNode, def) {
-    const dzEl = this._nfGetDropZoneElementFromTemplate(def?.template || "");
-        
-    if (dzEl) {
-      const dzNode = {
-        id: this._nfGenerateUniqueId(),
-        type: 'structure-box',
-        label: dzEl.getAttribute(this.ctx.CONFIG.ATTRIBUTES.DROP_ZONE) || "枠",
-        isStructure: true,
-        // 必要に応じて初期状態で中に配置するモジュールを設定
-        children: []
-      };
-      const childDefId = this._nfResolveDefaultChildDefId(def);
-      const child = this.createInitialData(childDefId);
-      if (child) dzNode.children.push(child);
-
-        newNode.children.push(dzNode);
-    }
-  }
-
-
-  /* ================================================================================================
-
-
-
-
-
-
-
-
-
-  /* ================================================================================================
-    Import / Export Layer
-  ================================================================================================ */
-
-  /**
-   * 文字列を指定拡張子のファイルとしてダウンロードする
-   * @param {string} content
-   * @param {string} ext - 'json' | 'css' など
-   * @param {string} mime
-   * @private
-   */
-  _downloadText(content, ext, mime) {
-    const fileName = this._generateExportFileName(ext);
-    this._downloadFile(content, fileName, mime);
-  }
-          /**
-           * タイムスタンプを含むエクスポート用ファイル名を生成する
-           * @param {string} extension - 拡張子 (例: 'json', 'html')
-           * @returns {string} ファイル名
-           * @private
-           */
-          _generateExportFileName(extension) {
-            const timestamp = new Date().getTime();
-            return `web-module-data-${timestamp}.${extension}`;
-          }
-          // ---------------------------------------------------------------
-          /**
-           * 文字列データをファイルとしてブラウザにダウンロードさせる
-           * @param {string} content - 書き出す内容
-           * @param {string} fileName - 保存するファイル名
-           * @param {string} contentType - MIMEタイプ
-           * @private
-           */
-          _downloadFile(content, fileName, contentType) {
-            const blob = new Blob([content], { type: contentType });
-            const url = URL.createObjectURL(blob);
-            
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = fileName;
-            
-            // DOMに追加せずに発火させてクリーンに保つ
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            
-            // メモリ解放
-            URL.revokeObjectURL(url);
-          }
-          // ---------------------------------------------------------------
-
-
-  /**
+   /**
    * 現在のデータツリーをJSONファイルとしてシリアライズし、ブラウザからダウンロードする
    */
   exportJSON() {
@@ -1971,9 +1917,6 @@ export class WebModuleBuilder {
 
     this._downloadText(jsonString, 'json', 'application/json');
   }
-  // ---------------------------------------------------------------
-
-
   // ---------------------------------------------------------------
 
   /**
@@ -1998,7 +1941,6 @@ export class WebModuleBuilder {
     this._downloadText(css, 'css', 'text/css');
   }
   // ---------------------------------------------------------------
-
 
       /**
        * ノードリストを再帰的に解析し、各要素のCSSルールを生成する
@@ -2030,7 +1972,6 @@ export class WebModuleBuilder {
       }
       // ---------------------------------------------------------------
 
-
       /**
        * ノードのattrsからセレクタごとのスタイル定義を整理する
        * @private
@@ -2056,8 +1997,64 @@ export class WebModuleBuilder {
       }
       // ---------------------------------------------------------------
 
+
+      /**
+       * 文字列を指定拡張子のファイルとしてダウンロードする
+       * @param {string} content
+       * @param {string} ext - 'json' | 'css' など
+       * @param {string} mime
+       * @private
+       */
+      _downloadText(content, ext, mime) {
+        const fileName = this._generateExportFileName(ext);
+        this._downloadFile(content, fileName, mime);
+      }
+              /**
+               * タイムスタンプを含むエクスポート用ファイル名を生成する
+               * @param {string} extension - 拡張子 (例: 'json', 'html')
+               * @returns {string} ファイル名
+               * @private
+               */
+              _generateExportFileName(extension) {
+                const timestamp = new Date().getTime();
+                return `web-module-data-${timestamp}.${extension}`;
+              }
+              // ---------------------------------------------------------------
+
+              /**
+               * 文字列データをファイルとしてブラウザにダウンロードさせる
+               * @param {string} content - 書き出す内容
+               * @param {string} fileName - 保存するファイル名
+               * @param {string} contentType - MIMEタイプ
+               * @private
+               */
+              _downloadFile(content, fileName, contentType) {
+                const blob = new Blob([content], { type: contentType });
+                const url = URL.createObjectURL(blob);
+                
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = fileName;
+                
+                // DOMに追加せずに発火させてクリーンに保つ
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                
+                // メモリ解放
+                URL.revokeObjectURL(url);
+              }
+              // ---------------------------------------------------------------
+
   // ---------------------------------------------------------------
 
+
+
+
+
+  /* ================================================================================================
+    Import / Storage
+  ================================================================================================ */
 
 
   /**
@@ -2088,6 +2085,21 @@ export class WebModuleBuilder {
   }
   // ---------------------------------------------------------------
 
+      /**
+       * Fileオブジェクトをテキストとして読み込む（Promise化）
+       * @param {File} file 
+       * @returns {Promise<string>}
+       * @private
+       */
+      _readFileAsText(file) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (e) => resolve(e.target.result);
+          reader.onerror = (e) => reject(e);
+          reader.readAsText(file);
+        });
+      }
+      // ---------------------------------------------------------------
 
       /**
        * 読み込んだデータを現在のマスターデータに適用する
@@ -2114,46 +2126,11 @@ export class WebModuleBuilder {
           return;
         }
 
-
         // ❌ 不正
         alert('JSON形式が不正です');
       }
       // ---------------------------------------------------------------
 
-
-      /**
-       * Fileオブジェクトをテキストとして読み込む（Promise化）
-       * @param {File} file 
-       * @returns {Promise<string>}
-       * @private
-       */
-      _readFileAsText(file) {
-        return new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = (e) => resolve(e.target.result);
-          reader.onerror = (e) => reject(e);
-          reader.readAsText(file);
-        });
-      }
-      // ---------------------------------------------------------------
-
-  // ---------------------------------------------------------------
-
-  /* ================================================================================================
-
-
-
-
-
-
-
-
-
-
-
-  /* ================================================================================================
-    Storage Layer
-  ================================================================================================ */
 
   _storageKey() {
     return "web_module_builder_data";
@@ -2211,34 +2188,13 @@ export class WebModuleBuilder {
   }
   // ---------------------------------------------------------------
 
-          
-
-  /* ================================================================================================
 
 
 
 
 
-
-
-
-
-  /**
-   * プレビューのドラッグ有効・無効を切り替える
-   */
-  togglePreviewDrag(enabled) {
-    // ✅ stateを正にする
-    this.uiState.previewDragEnabled = enabled;
-
-    const container = document.querySelector(this.ctx.CONFIG.SELECTORS.CONTAINER_INNER);
-    if (container) container.classList.toggle('drag-enabled', enabled);
-
-    this.syncView();
-  }
-  // ---------------------------------------------------------------
 
 
   
 
 }
-
